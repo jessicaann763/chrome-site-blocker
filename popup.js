@@ -1,3 +1,6 @@
+Here’s the full, polished `popup.js` with the password field clearing after a successful save, plus all the recent UI/logic updates (toast, countdown, “Block current site”, Parent Mode toggle + disable field/button, guards, etc.):
+
+```javascript
 // ----- helpers -----
 const $ = (id) => document.getElementById(id);
 const setIf = (id, fn) => { const el = $(id); if (el) fn(el); };
@@ -202,10 +205,11 @@ document.addEventListener("DOMContentLoaded", () => {
   // Save/Change master password (only when Parent Mode is OFF)
   setIf("savePasswordBtn", (btn) => {
     btn.addEventListener("click", () => {
-      const pw = ($("newPassword")?.value || "").trim();
+      const npEl = $("newPassword");
+      const pw = (npEl?.value || "").trim();
       if (!pw || pw.length < 4) {
         setText("settingsStatus", "Password must be at least 4 characters.", false);
-        $("newPassword")?.focus();
+        npEl?.focus();
         return;
       }
       chrome.runtime.sendMessage({ action: "setPassword", password: pw }, (res) => {
@@ -213,6 +217,8 @@ document.addEventListener("DOMContentLoaded", () => {
           toast("Master password saved");
           gHasPassword = true;
           applyParentModeUI(gParentMode);
+          // Clear the input after successful save
+          if (npEl) npEl.value = "";
         } else if (res?.error === "weak_password") {
           setText("settingsStatus", "Password must be at least 4 characters.", false);
         } else if (res?.error === "parent_mode_locked") {
@@ -289,4 +295,5 @@ document.addEventListener("DOMContentLoaded", () => {
 
   loadState();
 });
+```
 
