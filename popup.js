@@ -2,8 +2,8 @@
 const $ = (id) => document.getElementById(id);
 const setIf = (id, fn) => { const el = $(id); if (el) fn(el); };
 
-let gHasPassword = false; // from background
-let gParentMode = false;  // from background
+let gHasPassword = false; // non-empty master password?
+let gParentMode = false;
 
 function setText(id, text = "", ok = true) {
   setIf(id, (el) => {
@@ -88,17 +88,16 @@ function renderUnlockSelect(list) {
 function applyParentModeUI(parentMode) {
   gParentMode = parentMode;
 
-  // Update toggle + status
   setIf("parentModeToggle", (tgl) => { tgl.checked = parentMode; });
   setText("parentModeState", parentMode ? "ON" : "OFF");
 
-  // Blur/lock the master password field & button when ON
+  // Blur/lock the master password field & button when ON (but keep the same password active)
   const np = $("newPassword");
   const sp = $("savePasswordBtn");
   if (np) { np.disabled = parentMode; np.classList.toggle("blurred", parentMode); }
   if (sp) { sp.disabled = parentMode; sp.classList.toggle("blurred", parentMode); }
 
-  // Show/hide the "disable parent mode" password field
+  // Show the "disable parent mode" password field only when ON (and a master password exists)
   const wrap = $("disableParentWrap");
   if (wrap) wrap.style.display = parentMode && gHasPassword ? "block" : "none";
 }
@@ -156,12 +155,22 @@ document.addEventListener("DOMContentLoaded", () => {
   // Save/Change master password (only when Parent Mode is OFF)
   setIf("savePasswordBtn", (btn) => {
     btn.addEventListener("click", () => {
-      const pw = $("newPassword")?.value || "";
+      const pw = ($("newPassword")?.value || "").trim();
+
+      // UI-side guard too
+      if (!pw || pw.length < 4) {
+        setText("settingsStatus", "Password must be at least 4 characters.", false);
+        $("newPassword")?.focus();
+        return;
+      }
+
       chrome.runtime.sendMessage({ action: "setPassword", password: pw }, (res) => {
         if (res?.ok) {
           setText("settingsStatus", "Master password saved.");
           gHasPassword = true;
           applyParentModeUI(gParentMode);
+        } else if (res?.error === "weak_password") {
+          setText("settingsStatus", "Password must be at least 4 characters.", false);
         } else if (res?.error === "parent_mode_locked") {
           setText("settingsStatus", "Parent Mode is ON: turn it OFF to change the password.", false);
         } else {
@@ -171,7 +180,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // Toggle Parent Mode
+  // Toggle Parent Mode (enable requires existing password; disable requires password entry)
   setIf("parentModeToggle", (tgl) => {
     tgl.addEventListener("change", (e) => {
       const wantEnable = e.target.checked;
@@ -181,12 +190,11 @@ document.addEventListener("DOMContentLoaded", () => {
         setText("settingsStatus", "Set a master password before enabling Parent Mode.", false);
         e.target.checked = false;
         applyParentModeUI(false);
-        const np = $("newPassword"); if (np) np.focus();
+        $("newPassword")?.focus();
         return;
       }
 
-      // When disabling, we need the master password from the disable field
-      const disablePw = $("disableParentPassword")?.value.trim() || "";
+      const disablePw = ($("disableParentPassword")?.value || "").trim();
 
       chrome.runtime.sendMessage(
         { action: "toggleParentMode", enableParentMode: wantEnable, password: wantEnable ? "" : disablePw },
@@ -200,12 +208,12 @@ document.addEventListener("DOMContentLoaded", () => {
             applyParentModeUI(true);
             setText("settingsStatus", "Wrong password to disable Parent Mode.", false);
           } else if (res?.error === "no_password_set") {
-            // Shouldn't happen on disable; on enable we handle above
             e.target.checked = false;
             applyParentModeUI(false);
-            setText("settingsStatus", "Set a master password first.", false);
+            setText("settingsStatus", "Set a master password before enabling Parent Mode.", false);
+            $("newPassword")?.focus();
           } else {
-            // generic failure: revert to previous state
+            // generic failure: revert
             e.target.checked = !wantEnable;
             applyParentModeUI(!wantEnable);
             setText("settingsStatus", "Could not update Parent Mode.", false);
@@ -217,9 +225,3 @@ document.addEventListener("DOMContentLoaded", () => {
 
   loadState();
 });
-
-
-
-
-
-

@@ -1,7 +1,7 @@
 // Master-password unlocks + Parent Mode
 // - Parent Mode prevents changing the master password, but unlocks still work.
-// - Enable Parent Mode: requires master password to ALREADY exist; no password check.
-// - Disable Parent Mode: REQUIRES the correct master password.
+// - Enable Parent Mode: requires a NON-EMPTY master password to already exist; no password check.
+// - Disable Parent Mode: requires the correct master password.
 
 const now = () => Date.now();
 
@@ -25,9 +25,9 @@ function hostMatches(blockedHost, actualHost) {
 // ---------- state ----------
 async function getState() {
   return await chrome.storage.local.get({
-    blockedSites: [],        // string[]
-    tempUnlock: {},          // { [hostname]: expiryMillis }
-    password: "",            // master password
+    blockedSites: [],
+    tempUnlock: {},
+    password: "",                  // master password (must be non-empty)
     settings: { parentMode: false }
   });
 }
@@ -50,7 +50,7 @@ chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
   if (!baseMatch) return;
 
   const expiry = tempUnlock[host] || tempUnlock[baseMatch];
-  if (expiry && now() < expiry) return;
+  if (expiry && Date.now() < expiry) return;
 
   const redirect = chrome.runtime.getURL(`blocked.html?site=${encodeURIComponent(host)}`);
   try { await chrome.tabs.update(details.tabId, { url: redirect }); } catch {}
@@ -65,19 +65,28 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       sendResponse({
         blockedSites: state.blockedSites,
         settings: state.settings,
-        hasPassword: !!state.password
+        // treat only non-empty strings as "has password"
+        hasPassword: typeof state.password === "string" && state.password.trim().length > 0
       });
       return;
     }
 
     // Set/Change master password — blocked when Parent Mode is ON
     if (msg.action === "setPassword") {
-      const pw = (msg.password || "").trim();
       const settings = state.settings || { parentMode: false };
       if (settings.parentMode === true) {
         sendResponse({ ok: false, error: "parent_mode_locked" });
         return;
       }
+      const pwRaw = (msg.password ?? "");
+      const pw = String(pwRaw).trim();
+
+      // reject empty or too short passwords
+      if (!pw || pw.length < 4) {
+        sendResponse({ ok: false, error: "weak_password" });
+        return;
+      }
+
       await setState({ password: pw });
       sendResponse({ ok: true });
       return;
@@ -85,14 +94,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
     // Toggle Parent Mode
     // enableParentMode: boolean
-    // password: provided only when DISABLING (turning OFF)
+    // password: provided only when DISABLING
     if (msg.action === "toggleParentMode") {
       const enable = !!msg.enableParentMode;
       const settings = state.settings || { parentMode: false };
-      const currentPw = state.password;
+      const currentPw = (state.password || "").trim();
 
-      // Must have a master password to ENABLE parent mode
       if (enable) {
+        // Must have a real, non-empty master password to enable
         if (!currentPw) {
           sendResponse({ ok: false, error: "no_password_set" });
           return;
@@ -104,15 +113,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       }
 
       // DISABLE: require correct password
-      const pw = (msg.password || "").trim();
-      if (!currentPw) {
-        sendResponse({ ok: false, error: "no_password_set" });
-        return;
-      }
-      if (pw !== currentPw) {
-        sendResponse({ ok: false, error: "wrong_password" });
-        return;
-      }
+      const pw = String(msg.password || "").trim();
+      if (!currentPw) { sendResponse({ ok: false, error: "no_password_set" }); return; }
+      if (pw !== currentPw) { sendResponse({ ok: false, error: "wrong_password" }); return; }
+
       const next = { ...settings, parentMode: false };
       await setState({ settings: next });
       sendResponse({ ok: true, settings: next });
@@ -139,18 +143,19 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       return;
     }
 
-    // Temporary unlock — always allowed; requires master password
+    // Temporary unlock — allowed; requires master password
     if (msg.action === "unlock") {
       const host = normalizeHost(msg.site);
       const minutes = Number(msg.minutes);
-      const pw = (msg.password || "").trim();
+      const pw = String(msg.password || "").trim();
 
       if (!host || !minutes) { sendResponse({ ok: false, error: "bad_input" }); return; }
-      if (!state.password) { sendResponse({ ok: false, error: "no_password_set" }); return; }
-      if (pw !== state.password) { sendResponse({ ok: false, error: "wrong_password" }); return; }
+      const currentPw = (state.password || "").trim();
+      if (!currentPw) { sendResponse({ ok: false, error: "no_password_set" }); return; }
+      if (pw !== currentPw) { sendResponse({ ok: false, error: "wrong_password" }); return; }
 
       const tempUnlock = { ...(state.tempUnlock || {}) };
-      tempUnlock[host] = now() + minutes * 60 * 1000;
+      tempUnlock[host] = Date.now() + minutes * 60 * 1000;
       await setState({ tempUnlock });
       sendResponse({ ok: true, host, expiry: tempUnlock[host] });
       return;
@@ -161,3 +166,4 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
   return true;
 });
+
