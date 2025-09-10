@@ -10,7 +10,7 @@ A simple, privacy-friendly Chrome extension that helps you block distracting or 
 
 ---
 
-## ✨ Features
+##Features
 
 - **Block Sites**  
   Add domains manually (e.g., `reddit.com`) or block the current tab with one click.
