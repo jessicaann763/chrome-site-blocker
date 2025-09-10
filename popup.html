@@ -4,51 +4,124 @@
   <meta charset="utf-8" />
   <title>Site Blocker</title>
   <style>
-    body { font-family: system-ui, Arial; width: 320px; padding: 12px; }
-    h3 { margin: 12px 0 6px; }
-    input, button, select { width: 100%; margin: 6px 0; padding: 8px; box-sizing: border-box; }
+    :root {
+      --bg: #fff;
+      --fg: #111;
+      --muted: #6b7280;
+      --card: #fafafa;
+      --border: #e5e7eb;
+      --primary: #2563eb;
+      --primary-fg: #fff;
+      --danger: #dc2626;
+      --ring: #93c5fd;
+      --shadow: 0 6px 20px rgba(0,0,0,.08);
+      --radius: 14px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0b0f14;
+        --fg: #e5e7eb;
+        --muted: #9ca3af;
+        --card: #0f141b;
+        --border: #1f2937;
+        --primary: #60a5fa;
+        --primary-fg: #0b0f14;
+        --danger: #f87171;
+        --ring: #2563eb;
+        --shadow: 0 6px 20px rgba(0,0,0,.35);
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      color: var(--fg);
+      background: var(--bg);
+      width: 350px;
+      padding: 14px;
+    }
+    h3 { margin: 0 0 10px; font-size: 15px; }
+    .section {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px;
+      margin: 12px 0;
+      box-shadow: var(--shadow);
+    }
+    input, select, button {
+      width: 100%;
+      margin: 6px 0;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--fg);
+      transition: box-shadow .15s ease, transform .04s ease, background .15s;
+    }
+    input:focus, select:focus { outline: none; box-shadow: 0 0 0 3px var(--ring); }
+    button { background: var(--card); cursor: pointer; }
+    button:hover { filter: brightness(1.02); }
+    button:active { transform: translateY(1px); }
+    .btn-primary { background: var(--primary); color: var(--primary-fg); border-color: transparent; }
+    .btn-danger  { background: var(--danger);  color: #fff; border-color: transparent; }
+    .muted { color: var(--muted); font-size: 12px; }
     .row { display: flex; gap: 8px; }
     .row > * { flex: 1; }
-    .pill { display: inline-flex; align-items: center; gap: 8px; background: #eee; padding: 4px 8px; border-radius: 999px; margin: 4px 6px 0 0; }
-    .pill button { width: auto; padding: 2px 6px; }
-    small { color: #666; }
-    .muted { color: #888; font-size: 12px; }
-    .section { border-top: 1px solid #eee; margin-top: 10px; padding-top: 10px; }
+    .status-row { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+    .pills { display: flex; flex-wrap: wrap; gap: 8px; }
+    .pill {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      padding: 6px 10px;
+      border-radius: 999px;
+    }
+    .pill button {
+      width: auto; padding: 0 6px; border: none; background: transparent; color: var(--muted);
+    }
+    .pill button:hover { color: var(--danger); }
 
-    /* Toggle switch styles */
+    /* Toggle switch */
     .toggle-wrap { display:flex; align-items:center; justify-content:space-between; gap:10px; }
     .switch { position: relative; display: inline-block; width: 44px; height: 24px; }
     .switch input { display: none; }
     .slider {
-      position: absolute; cursor: pointer;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background-color: #ccc; transition: .2s; border-radius: 999px;
+      position: absolute; inset: 0; cursor: pointer;
+      background-color: #cbd5e1; border-radius: 999px; transition: .2s;
     }
     .slider:before {
-      position: absolute; content: "";
-      height: 18px; width: 18px; left: 3px; bottom: 3px;
-      background-color: white; transition: .2s; border-radius: 50%;
-      box-shadow: 0 1px 2px rgba(0,0,0,.2);
+      position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px;
+      background-color: white; border-radius: 50%; transition: .2s;
+      box-shadow: 0 1px 2px rgba(0,0,0,.25);
     }
-    input:checked + .slider { background-color: #4caf50; }
+    input:checked + .slider { background-color: var(--primary); }
     input:checked + .slider:before { transform: translateX(20px); }
 
-    /* Blur effect when Parent Mode is ON */
+    /* Blur lock when Parent Mode is ON */
     .blurred { filter: blur(3px); pointer-events: none; }
+
+    /* Toast host */
+    #toast { position: fixed; inset-inline: 0; top: 8px; display:flex; justify-content:center; pointer-events:none; }
   </style>
 </head>
 <body>
-  <h3>Blocked sites</h3>
-  <div id="blockedList"></div>
+  <!-- Toast container -->
+  <div id="toast"></div>
+
+  <div class="section">
+    <h3>Blocked sites</h3>
+    <div id="blockedList" class="pills"></div>
+  </div>
 
   <div class="section">
     <h3>Add a site to block</h3>
     <div class="row">
       <input id="siteInput" placeholder="reddit.com" />
-      <button id="blockCurrentBtn" title="Block the active tab's site">Block current site</button>
+      <button id="blockCurrentBtn" class="btn-primary" title="Block the active tab's site">Block current site</button>
     </div>
-    <button id="blockBtn">Block</button>
-    <small id="status"></small>
+    <button id="blockBtn" class="btn-primary">Block</button>
+    <small id="status" class="muted"></small>
   </div>
 
   <div class="section">
@@ -64,16 +137,15 @@
       </select>
       <input id="password" type="password" placeholder="Password (master)" />
     </div>
-    <button id="unlockBtn" disabled>Unlock</button>
+    <button id="unlockBtn" class="btn-primary" disabled>Unlock</button>
     <small id="unlockStatus" class="muted"></small>
   </div>
 
   <div class="section">
     <h3>Settings</h3>
-    <!-- ONE master password field. When Parent Mode is ON, it blurs/locks but remains the active password. -->
     <div class="row">
       <input id="newPassword" type="password" placeholder="Set / change master password" />
-      <button id="savePasswordBtn">Save password</button>
+      <button id="savePasswordBtn" class="btn-primary">Save password</button>
     </div>
 
     <div class="toggle-wrap">
@@ -87,10 +159,9 @@
       <small id="parentModeState" class="muted"></small>
     </div>
 
-    <!-- Shown only when Parent Mode is ON (to disable it). -->
     <div id="disableParentWrap" style="display:none;">
       <input id="disableParentPassword" type="password" placeholder="Disable Parent Mode with master password" />
-      <button id="disableParentBtn">Disable Parent Mode</button>
+      <button id="disableParentBtn" class="btn-danger">Disable Parent Mode</button>
     </div>
 
     <small id="settingsStatus" class="muted"></small>
@@ -99,9 +170,5 @@
   <script src="popup.js"></script>
 </body>
 </html>
-
-
-
-
 
 
