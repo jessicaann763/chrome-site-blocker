@@ -124,13 +124,12 @@ function renderBlocked(list) {
       btn.title = gParentMode ? "Unblock disabled in Parent Mode" : "Unblock";
 
       if (gParentMode) {
-        // When Parent Mode is ON, disable the remove button entirely
-        btn.disabled = true;
-        // optional visual hint if you don't have CSS for disabled:
-        btn.style.opacity = "0.5";
-        btn.style.cursor = "not-allowed";
+        // Parent Mode ON: do not unblock; show guidance message instead
+        btn.addEventListener("click", () => {
+          toast("Disable Parent Mode to unblock", false);
+        });
       } else {
-        // Only attach the unblock logic if Parent Mode is OFF
+        // Parent Mode OFF: normal unblock flow
         btn.addEventListener("click", () => {
           chrome.runtime.sendMessage({ action: "unblockSite", site: host }, (res) => {
             if (res?.ok) {
@@ -138,7 +137,8 @@ function renderBlocked(list) {
               loadState();
               refreshIfCurrentTabMatches(host);
             } else {
-              toast("Could not unblock", false);
+              // If some unexpected error in non-parent mode
+              toast("Disable Parent Mode to unblock", false);
             }
           });
         });
@@ -255,7 +255,7 @@ document.addEventListener("DOMContentLoaded", () => {
           $("siteInput").value = "";
           loadState();
           blockCurrentTabIfMatches(res.host); // immediately block if on that site
-        } else setText("status", "Could not block site.", false);
+        } else setText("status", "Enter a site to block.", false);
       });
     });
   });
@@ -270,7 +270,7 @@ document.addEventListener("DOMContentLoaded", () => {
             toast(`Blocked ${res.host}`);
             loadState();
             blockCurrentTabIfMatches(res.host);
-          } else setText("status", "Could not block site.", false);
+          } else setText("status", "Enter a site to block.", false);
         });
       });
     });
@@ -393,3 +393,4 @@ document.addEventListener("DOMContentLoaded", () => {
 
   loadState();
 });
+git 

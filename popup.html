@@ -68,7 +68,6 @@
     .muted { color: var(--muted); font-size: 12px; }
     .row { display: flex; gap: 8px; }
     .row > * { flex: 1; }
-    .status-row { display:flex; align-items:center; justify-content:space-between; gap:8px; }
     .pills { display: flex; flex-wrap: wrap; gap: 8px; }
     .pill {
       display: inline-flex; align-items: center; gap: 8px;
@@ -98,24 +97,21 @@
     input:checked + .slider { background-color: var(--primary); }
     input:checked + .slider:before { transform: translateX(20px); }
 
-    /* Blur lock when Parent Mode is ON */
     .blurred { filter: blur(3px); pointer-events: none; }
 
-    /* Toast host */
     #toast { position: fixed; inset-inline: 0; top: 8px; display:flex; justify-content:center; pointer-events:none; }
   </style>
 </head>
 <body>
-  <!-- Toast container -->
   <div id="toast"></div>
 
   <div class="section">
-    <h3>Blocked sites</h3>
+    <h3>Blocked Sites</h3>
     <div id="blockedList" class="pills"></div>
   </div>
 
   <div class="section">
-    <h3>Add a site to block</h3>
+    <h3>Add Site to Block</h3>
     <div class="row">
       <input id="siteInput" placeholder="reddit.com" />
       <button id="blockCurrentBtn" class="btn-primary" title="Block the active tab's site">Block current site</button>
@@ -125,7 +121,7 @@
   </div>
 
   <div class="section">
-    <h3>Temporary unlock</h3>
+    <h3>Temporary Unblock</h3>
     <select id="unlockSiteSelect"></select>
     <div class="row">
       <select id="durationSelect">
@@ -142,7 +138,7 @@
   </div>
 
   <div class="section">
-    <h3>Settings</h3>
+    <h3>Password & Parent Mode</h3>
     <div class="row">
       <input id="newPassword" type="password" placeholder="Set / change master password" />
       <button id="savePasswordBtn" class="btn-primary">Save password</button>
@@ -170,5 +166,6 @@
   <script src="popup.js"></script>
 </body>
 </html>
+
 
 
