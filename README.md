@@ -1,6 +1,3 @@
-Perfect — let’s expand your README to include your **Privacy Policy** section so everything is in one place. I’ll add it right after the Disclaimer for visibility. Here’s the full, polished version:
-
----
 
 # Chrome Site Blocker
 
