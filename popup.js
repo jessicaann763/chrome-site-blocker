@@ -97,7 +97,7 @@ function applyParentModeUI(parentMode) {
   if (np) { np.disabled = parentMode; np.classList.toggle("blurred", parentMode); }
   if (sp) { sp.disabled = parentMode; sp.classList.toggle("blurred", parentMode); }
 
-  // Show the "disable parent mode" password field only when ON (and a master password exists)
+  // Show the "disable parent mode" area only when ON (and a master password exists)
   const wrap = $("disableParentWrap");
   if (wrap) wrap.style.display = parentMode && gHasPassword ? "block" : "none";
 }
@@ -116,6 +116,7 @@ function loadState() {
 
 // --- events ---
 document.addEventListener("DOMContentLoaded", () => {
+  // Add block
   setIf("blockBtn", (btn) => {
     btn.addEventListener("click", () => {
       const site = $("siteInput")?.value.trim();
@@ -129,12 +130,14 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
+  // Use current tab for block
   setIf("useCurrentForBlock", (btn) => {
     btn.addEventListener("click", () => {
       currentTabHostname((h) => { if ($("siteInput")) $("siteInput").value = h || ""; });
     });
   });
 
+  // Temporary unlock
   setIf("unlockBtn", (btn) => {
     btn.addEventListener("click", () => {
       const site = $("unlockSiteSelect")?.value;
@@ -157,7 +160,7 @@ document.addEventListener("DOMContentLoaded", () => {
     btn.addEventListener("click", () => {
       const pw = ($("newPassword")?.value || "").trim();
 
-      // UI-side guard too
+      // UI-side guard
       if (!pw || pw.length < 4) {
         setText("settingsStatus", "Password must be at least 4 characters.", false);
         $("newPassword")?.focus();
@@ -180,7 +183,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // Toggle Parent Mode (enable requires existing password; disable requires password entry)
+  // Toggle Parent Mode from the switch
   setIf("parentModeToggle", (tgl) => {
     tgl.addEventListener("change", (e) => {
       const wantEnable = e.target.checked;
@@ -217,6 +220,28 @@ document.addEventListener("DOMContentLoaded", () => {
             e.target.checked = !wantEnable;
             applyParentModeUI(!wantEnable);
             setText("settingsStatus", "Could not update Parent Mode.", false);
+          }
+        }
+      );
+    });
+  });
+
+  // NEW: Dedicated "Disable Parent Mode" button under the field
+  setIf("disableParentBtn", (btn) => {
+    btn.addEventListener("click", () => {
+      const pw = ($("disableParentPassword")?.value || "").trim();
+      chrome.runtime.sendMessage(
+        { action: "toggleParentMode", enableParentMode: false, password: pw },
+        (res) => {
+          if (res?.ok) {
+            setText("settingsStatus", "Parent Mode disabled.");
+            applyParentModeUI(false);
+            const tgl = $("parentModeToggle"); if (tgl) tgl.checked = false;
+            const dp = $("disableParentPassword"); if (dp) dp.value = "";
+          } else if (res?.error === "wrong_password") {
+            setText("settingsStatus", "Wrong password to disable Parent Mode.", false);
+          } else {
+            setText("settingsStatus", "Could not disable Parent Mode.", false);
           }
         }
       );

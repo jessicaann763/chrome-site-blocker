@@ -70,7 +70,7 @@
 
   <div class="section">
     <h3>Settings</h3>
-    <!-- This is the ONE master password field. When Parent Mode is ON, it blurs/locks but remains the password used. -->
+    <!-- ONE master password field. When Parent Mode is ON, it blurs/locks but remains the active password. -->
     <div class="row">
       <input id="newPassword" type="password" placeholder="Set / change master password" />
       <button id="savePasswordBtn">Save password</button>
@@ -87,9 +87,10 @@
       <small id="parentModeState" class="muted"></small>
     </div>
 
-    <!-- This field ONLY appears when Parent Mode is ON (to disable it) -->
+    <!-- Shown only when Parent Mode is ON (to disable it). Added a button here. -->
     <div id="disableParentWrap" style="display:none;">
       <input id="disableParentPassword" type="password" placeholder="Disable Parent Mode with master password" />
+      <button id="disableParentBtn">Disable Parent Mode</button>
     </div>
 
     <small id="settingsStatus" class="muted"></small>
