@@ -8,6 +8,7 @@
     .card { display: inline-block; padding: 24px; border: 1px solid #ddd; border-radius: 12px; }
     h1 { margin: 0 0 8px; }
     p { color: #555; }
+    small { color: #888; }
   </style>
 </head>
 <body>
@@ -15,13 +16,26 @@
     <h1>🚫 This site is blocked</h1>
     <p id="siteP"></p>
     <p>Open the extension popup to manage settings.</p>
+    <small id="pathInfo"></small>
   </div>
   <script>
-    const p = new URLSearchParams(location.search).get("site");
-    if (p) document.getElementById("siteP").textContent = p;
+    const qs = new URLSearchParams(location.search);
+    const site = (qs.get("site") || "").toLowerCase();
+    const url  = qs.get("url");
+    if (site) document.getElementById("siteP").textContent = site;
+
+    // Optional: show the exact path for context
+    if (url) {
+      try {
+        const u = new URL(url);
+        const info = `${u.pathname}${u.search}${u.hash}` || "/";
+        document.getElementById("pathInfo").textContent = info;
+      } catch {}
+    }
   </script>
 </body>
 </html>
+
 
 
 

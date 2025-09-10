@@ -32,10 +32,14 @@ function toast(msg, ok = true) {
   setTimeout(() => host.removeChild(el), 2200);
 }
 
+function currentTab(cb) {
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => cb(tabs?.[0]));
+}
+
 function currentTabHostname(cb) {
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+  currentTab((tab) => {
     try {
-      const url = new URL(tabs?.[0]?.url || "");
+      const url = new URL(tab?.url || "");
       let h = url.hostname.toLowerCase();
       if (h.startsWith("www.")) h = h.slice(4);
       cb(h);
@@ -44,33 +48,78 @@ function currentTabHostname(cb) {
 }
 
 /**
+ * If you're on the same host when you BLOCK it, jump to blocked.html immediately.
+ */
+function blockCurrentTabIfMatches(host) {
+  currentTab((tab) => {
+    if (!tab?.url) return;
+    try {
+      const u = new URL(tab.url);
+      let h = u.hostname.toLowerCase();
+      if (h.startsWith("www.")) h = h.slice(4);
+      const matches = h === host || h.endsWith("." + host);
+      if (matches) {
+        const blockedUrl = chrome.runtime.getURL(
+          `blocked.html?site=${encodeURIComponent(host)}&url=${encodeURIComponent(tab.url)}`
+        );
+        chrome.tabs.update(tab.id, { url: blockedUrl });
+      }
+    } catch {}
+  });
+}
+
+/**
  * Refresh or navigate the current tab if it's the same host
  * or if it's on the extension's blocked.html for that host.
+ * If blocked.html has a ?url= param pointing to the original full URL, we go there.
  */
 function refreshIfCurrentTabMatches(host) {
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     const tab = tabs?.[0];
     if (!tab?.url) return;
-    try {
-      const u = new URL(tab.url);
 
-      // If we're on the extension's blocked page, and it matches this host, jump to the site
-      const blockedUrlBase = chrome.runtime.getURL("blocked.html");
-      const isBlockedPage = tab.url.startsWith(blockedUrlBase);
+    try {
+      const current = new URL(tab.url);
+      const blockedBase = chrome.runtime.getURL("blocked.html");
+      const isBlockedPage = tab.url.startsWith(blockedBase);
+
       if (isBlockedPage) {
-        const site = new URLSearchParams(u.search).get("site");
-        if (site === host) {
-          chrome.tabs.update(tab.id, { url: `https://${host}/` });
-          return;
+        const qs = new URLSearchParams(current.search);
+        const targetUrl = qs.get("url");           // full original URL (encoded by background)
+        const siteParam = (qs.get("site") || "").toLowerCase();
+
+        if (targetUrl) {
+          try {
+            const t = new URL(targetUrl);
+            let tHost = t.hostname.toLowerCase();
+            if (tHost.startsWith("www.")) tHost = tHost.slice(4);
+
+            const sameHost = (tHost === host) || tHost.endsWith("." + host);
+            const matchesSiteParam = !siteParam || tHost === siteParam || tHost.endsWith("." + siteParam);
+
+            if (sameHost && matchesSiteParam) {
+              chrome.tabs.update(tab.id, { url: targetUrl });
+              return;
+            }
+          } catch {
+            // fall through to root
+          }
         }
+
+        // Fallback: send to site root if exact URL unavailable/unsafe
+        chrome.tabs.update(tab.id, { url: `https://${host}/` });
+        return;
       }
 
-      // If the tab is on the same host (or a subdomain), reload it
-      let h = u.hostname.toLowerCase();
+      // If we’re already on that host (or its subdomain), just reload
+      let h = current.hostname.toLowerCase();
       if (h.startsWith("www.")) h = h.slice(4);
-      const matches = (h === host) || h.endsWith("." + host);
+      const matches = h === host || h.endsWith("." + host);
       if (matches) chrome.tabs.reload(tab.id);
-    } catch {}
+
+    } catch {
+      // ignore
+    }
   });
 }
 
@@ -95,8 +144,7 @@ function renderBlocked(list) {
           if (res?.ok) {
             toast(`Unblocked ${host}`);
             loadState();
-            // NEW: refresh current tab if it matches this host / blocked page for it
-            refreshIfCurrentTabMatches(host);
+            refreshIfCurrentTabMatches(host); // return to exact page / refresh if relevant
           }
         });
       });
@@ -195,9 +243,15 @@ document.addEventListener("DOMContentLoaded", () => {
       const site = $("siteInput")?.value.trim();
       if (!site) return setText("status", "Enter a site to block.", false);
       chrome.runtime.sendMessage({ action: "block", site }, (res) => {
-        if (res?.ok) { toast(`Blocked ${res.host}`); $("siteInput").value = ""; }
-        else setText("status", "Could not block site.", false);
-        loadState();
+        if (res?.ok) {
+          toast(`Blocked ${res.host}`);
+          $("siteInput").value = "";
+          loadState();
+          // NEW: if you're on that site now, jump to blocked.html immediately
+          blockCurrentTabIfMatches(res.host);
+        } else {
+          setText("status", "Could not block site.", false);
+        }
       });
     });
   });
@@ -208,9 +262,14 @@ document.addEventListener("DOMContentLoaded", () => {
       currentTabHostname((h) => {
         if (!h) return setText("status", "Couldn't read current tab URL.", false);
         chrome.runtime.sendMessage({ action: "block", site: h }, (res) => {
-          if (res?.ok) toast(`Blocked ${res.host}`);
-          else setText("status", "Could not block site.", false);
-          loadState();
+          if (res?.ok) {
+            toast(`Blocked ${res.host}`);
+            loadState();
+            // NEW: since we just blocked the current site's host, jump to blocked.html
+            blockCurrentTabIfMatches(res.host);
+          } else {
+            setText("status", "Could not block site.", false);
+          }
         });
       });
     });
@@ -228,8 +287,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (res?.ok) {
           toast(`Unlocked ${res.host} for ${minutes}m`);
           if (res.expiry) showUnlockCountdown(res.host, res.expiry);
-          // NEW: refresh current tab if it matches the unlocked host
-          refreshIfCurrentTabMatches(res.host);
+          refreshIfCurrentTabMatches(res.host); // return to exact page / refresh if relevant
         } else if (res?.error === "wrong_password") {
           setText("unlockStatus", "Wrong password.", false);
         } else if (res?.error === "no_password_set") {
@@ -256,8 +314,7 @@ document.addEventListener("DOMContentLoaded", () => {
           toast("Master password saved");
           gHasPassword = true;
           applyParentModeUI(gParentMode);
-          // Clear the input after successful save
-          if (npEl) npEl.value = "";
+          if (npEl) npEl.value = ""; // clear input after successful save
         } else if (res?.error === "weak_password") {
           setText("settingsStatus", "Password must be at least 4 characters.", false);
         } else if (res?.error === "parent_mode_locked") {
@@ -334,3 +391,4 @@ document.addEventListener("DOMContentLoaded", () => {
 
   loadState();
 });
+

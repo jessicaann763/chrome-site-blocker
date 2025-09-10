@@ -52,7 +52,10 @@ chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
   const expiry = tempUnlock[host] || tempUnlock[baseMatch];
   if (expiry && Date.now() < expiry) return;
 
-  const redirect = chrome.runtime.getURL(`blocked.html?site=${encodeURIComponent(host)}`);
+  // NEW: include the original attempted URL so we can return to it after unlock/unblock
+  const redirect = chrome.runtime.getURL(
+    `blocked.html?site=${encodeURIComponent(baseMatch)}&url=${encodeURIComponent(details.url)}`
+  );
   try { await chrome.tabs.update(details.tabId, { url: redirect }); } catch {}
 }, { url: [{ urlMatches: ".*" }] });
 
@@ -65,7 +68,6 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       sendResponse({
         blockedSites: state.blockedSites,
         settings: state.settings,
-        // treat only non-empty strings as "has password"
         hasPassword: typeof state.password === "string" && state.password.trim().length > 0
       });
       return;
@@ -78,41 +80,27 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         sendResponse({ ok: false, error: "parent_mode_locked" });
         return;
       }
-      const pwRaw = (msg.password ?? "");
-      const pw = String(pwRaw).trim();
-
-      // reject empty or too short passwords
-      if (!pw || pw.length < 4) {
-        sendResponse({ ok: false, error: "weak_password" });
-        return;
-      }
-
+      const pw = String(msg.password ?? "").trim();
+      if (!pw || pw.length < 4) { sendResponse({ ok: false, error: "weak_password" }); return; }
       await setState({ password: pw });
       sendResponse({ ok: true });
       return;
     }
 
-    // Toggle Parent Mode
-    // enableParentMode: boolean
-    // password: provided only when DISABLING
+    // Toggle Parent Mode (enable requires existing non-empty password; disable requires correct password)
     if (msg.action === "toggleParentMode") {
       const enable = !!msg.enableParentMode;
       const settings = state.settings || { parentMode: false };
       const currentPw = (state.password || "").trim();
 
       if (enable) {
-        // Must have a real, non-empty master password to enable
-        if (!currentPw) {
-          sendResponse({ ok: false, error: "no_password_set" });
-          return;
-        }
+        if (!currentPw) { sendResponse({ ok: false, error: "no_password_set" }); return; }
         const next = { ...settings, parentMode: true };
         await setState({ settings: next });
         sendResponse({ ok: true, settings: next });
         return;
       }
 
-      // DISABLE: require correct password
       const pw = String(msg.password || "").trim();
       if (!currentPw) { sendResponse({ ok: false, error: "no_password_set" }); return; }
       if (pw !== currentPw) { sendResponse({ ok: false, error: "wrong_password" }); return; }
