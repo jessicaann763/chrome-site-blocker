@@ -16,7 +16,7 @@ A simple, privacy-friendly Chrome extension that helps you block distracting or 
   Add domains manually (e.g., `reddit.com`) or block the current tab with one click.
 
 - **Temporary Unblock**  
-  Need quick access? Temporarily unblock for 2–30 minutes.  
+  Need to consult the reddit overlords? Temporarily unblock for 2–30 minutes.  
   - When **Parent Mode** is OFF → no password required  
   - When **Parent Mode** is ON → master password required
 
