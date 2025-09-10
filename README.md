@@ -30,11 +30,13 @@ A simple, privacy-friendly Chrome extension that helps you block distracting or 
   - Master password stored as a **salted PBKDF2 hash** (never plaintext)  
   - No accounts, no cloud storage, no tracking  
 
-**IMPORTANT NOTE: If you forget your password, you will need to uninstall and re-install. In order to preserve data privacy I opted to not need a formal account to use this extension. You can change your password at any time without knowing your current if "parent mode" is disabled. To ensure kids don't uninstall the extension to bypass the controls, it's suggested to use a monitored google account.
+**IMPORTANT NOTE: 
+  -If you forget your password, you will need to uninstall and re-install. In order to preserve data privacy I opted to not need a formal account to use this extension. You can change your password at any time without knowing your current if "parent mode" is disabled. To ensure kids don't uninstall the extension to bypass the controls, it's suggested to use a monitored google account.
 ---
 
 ##Installation 
  - will be live on chrome extension marketplace soon
+ -obvi u are allowed to download and use these files in chrome://extensions/ with dev mode turned on (Load Package)
 ---
 Disclaimer
 This extension is provided “as is” without warranty of any kind, express or implied. The developer makes no guarantees regarding the effectiveness of the site blocking features.
