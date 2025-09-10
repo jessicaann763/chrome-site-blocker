@@ -12,9 +12,9 @@
     "type": "module"
   },
   "icons": {
-    "16": "icon16_transparent.png",
-    "48": "icon48_transparent.png",
-    "128": "icon128_transparent.png"
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
   },
   "permissions": [
     "storage",
