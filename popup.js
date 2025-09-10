@@ -1,6 +1,3 @@
-Here’s the full, polished `popup.js` with the password field clearing after a successful save, plus all the recent UI/logic updates (toast, countdown, “Block current site”, Parent Mode toggle + disable field/button, guards, etc.):
-
-```javascript
 // ----- helpers -----
 const $ = (id) => document.getElementById(id);
 const setIf = (id, fn) => { const el = $(id); if (el) fn(el); };
@@ -46,6 +43,37 @@ function currentTabHostname(cb) {
   });
 }
 
+/**
+ * Refresh or navigate the current tab if it's the same host
+ * or if it's on the extension's blocked.html for that host.
+ */
+function refreshIfCurrentTabMatches(host) {
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    const tab = tabs?.[0];
+    if (!tab?.url) return;
+    try {
+      const u = new URL(tab.url);
+
+      // If we're on the extension's blocked page, and it matches this host, jump to the site
+      const blockedUrlBase = chrome.runtime.getURL("blocked.html");
+      const isBlockedPage = tab.url.startsWith(blockedUrlBase);
+      if (isBlockedPage) {
+        const site = new URLSearchParams(u.search).get("site");
+        if (site === host) {
+          chrome.tabs.update(tab.id, { url: `https://${host}/` });
+          return;
+        }
+      }
+
+      // If the tab is on the same host (or a subdomain), reload it
+      let h = u.hostname.toLowerCase();
+      if (h.startsWith("www.")) h = h.slice(4);
+      const matches = (h === host) || h.endsWith("." + host);
+      if (matches) chrome.tabs.reload(tab.id);
+    } catch {}
+  });
+}
+
 // ----- UI rendering -----
 function renderBlocked(list) {
   setIf("blockedList", (wrap) => {
@@ -64,7 +92,12 @@ function renderBlocked(list) {
       btn.title = "Unblock";
       btn.addEventListener("click", () => {
         chrome.runtime.sendMessage({ action: "unblockSite", site: host }, (res) => {
-          if (res?.ok) { toast(`Unblocked ${host}`); loadState(); }
+          if (res?.ok) {
+            toast(`Unblocked ${host}`);
+            loadState();
+            // NEW: refresh current tab if it matches this host / blocked page for it
+            refreshIfCurrentTabMatches(host);
+          }
         });
       });
       pill.appendChild(btn);
@@ -195,9 +228,15 @@ document.addEventListener("DOMContentLoaded", () => {
         if (res?.ok) {
           toast(`Unlocked ${res.host} for ${minutes}m`);
           if (res.expiry) showUnlockCountdown(res.host, res.expiry);
-        } else if (res?.error === "wrong_password") setText("unlockStatus", "Wrong password.", false);
-        else if (res?.error === "no_password_set") setText("unlockStatus", "No master password set. Set one in Settings.", false);
-        else setText("unlockStatus", "Could not unlock.", false);
+          // NEW: refresh current tab if it matches the unlocked host
+          refreshIfCurrentTabMatches(res.host);
+        } else if (res?.error === "wrong_password") {
+          setText("unlockStatus", "Wrong password.", false);
+        } else if (res?.error === "no_password_set") {
+          setText("unlockStatus", "No master password set. Set one in Settings.", false);
+        } else {
+          setText("unlockStatus", "Could not unlock.", false);
+        }
       });
     });
   });
@@ -295,5 +334,3 @@ document.addEventListener("DOMContentLoaded", () => {
 
   loadState();
 });
-```
-
