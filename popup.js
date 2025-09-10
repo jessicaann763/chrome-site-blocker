@@ -116,7 +116,7 @@ function loadState() {
 
 // --- events ---
 document.addEventListener("DOMContentLoaded", () => {
-  // Add block
+  // Add via text input
   setIf("blockBtn", (btn) => {
     btn.addEventListener("click", () => {
       const site = $("siteInput")?.value.trim();
@@ -130,10 +130,17 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // Use current tab for block
-  setIf("useCurrentForBlock", (btn) => {
+  // NEW: Block current site immediately (renamed button)
+  setIf("blockCurrentBtn", (btn) => {
     btn.addEventListener("click", () => {
-      currentTabHostname((h) => { if ($("siteInput")) $("siteInput").value = h || ""; });
+      currentTabHostname((h) => {
+        if (!h) return setText("status", "Couldn't read current tab URL.", false);
+        chrome.runtime.sendMessage({ action: "block", site: h }, (res) => {
+          if (res?.ok) setText("status", `Blocked ${res.host}.`);
+          else setText("status", "Could not block site.", false);
+          loadState();
+        });
+      });
     });
   });
 
@@ -160,7 +167,6 @@ document.addEventListener("DOMContentLoaded", () => {
     btn.addEventListener("click", () => {
       const pw = ($("newPassword")?.value || "").trim();
 
-      // UI-side guard
       if (!pw || pw.length < 4) {
         setText("settingsStatus", "Password must be at least 4 characters.", false);
         $("newPassword")?.focus();
@@ -226,7 +232,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // NEW: Dedicated "Disable Parent Mode" button under the field
+  // Dedicated "Disable Parent Mode" button
   setIf("disableParentBtn", (btn) => {
     btn.addEventListener("click", () => {
       const pw = ($("disableParentPassword")?.value || "").trim();
@@ -250,3 +256,4 @@ document.addEventListener("DOMContentLoaded", () => {
 
   loadState();
 });
+

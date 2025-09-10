@@ -45,7 +45,7 @@
     <h3>Add a site to block</h3>
     <div class="row">
       <input id="siteInput" placeholder="reddit.com" />
-      <button id="useCurrentForBlock" title="Use current tab">↻</button>
+      <button id="blockCurrentBtn" title="Block the active tab's site">Block current site</button>
     </div>
     <button id="blockBtn">Block</button>
     <small id="status"></small>
@@ -87,7 +87,7 @@
       <small id="parentModeState" class="muted"></small>
     </div>
 
-    <!-- Shown only when Parent Mode is ON (to disable it). Added a button here. -->
+    <!-- Shown only when Parent Mode is ON (to disable it). -->
     <div id="disableParentWrap" style="display:none;">
       <input id="disableParentPassword" type="password" placeholder="Disable Parent Mode with master password" />
       <button id="disableParentBtn">Disable Parent Mode</button>
@@ -99,6 +99,7 @@
   <script src="popup.js"></script>
 </body>
 </html>
+
 
 
 
