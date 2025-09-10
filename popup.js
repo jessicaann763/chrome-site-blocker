@@ -1,6 +1,8 @@
-// ---------- tiny helpers ----------
+// Safe DOM helpers
 const $ = (id) => document.getElementById(id);
-const setIf = (id, fn) => { const el = $(id); if (el) fn(el); }; // only run if element exists
+const setIf = (id, fn) => { const el = $(id); if (el) fn(el); };
+
+let gHasPassword = false; // from background getState()
 
 function setText(id, text = "", ok = true) {
   setIf(id, (el) => {
@@ -8,7 +10,7 @@ function setText(id, text = "", ok = true) {
     if (id === "status" || id === "unlockStatus" || id === "settingsStatus") {
       el.style.color = ok ? "#666" : "#c00";
     }
-    if (text) setTimeout(() => { if ($(id)) $(id).textContent = ""; }, 3000);
+    if (text) setTimeout(() => { const e = $(id); if (e) e.textContent = ""; }, 3000);
   });
 }
 
@@ -23,7 +25,6 @@ function currentTabHostname(cb) {
   });
 }
 
-// ---------- renderers ----------
 function renderBlocked(list) {
   setIf("blockedList", (wrap) => {
     wrap.innerHTML = "";
@@ -51,7 +52,7 @@ function renderBlocked(list) {
 function renderUnlockSelect(list) {
   const select = $("unlockSiteSelect");
   const unlockBtn = $("unlockBtn");
-  if (!select) return; // nothing to do if missing
+  if (!select) return;
 
   select.innerHTML = "";
   if (!list || list.length === 0) {
@@ -80,9 +81,7 @@ function renderUnlockSelect(list) {
     select.appendChild(opt);
   });
 
-  select.onchange = () => {
-    if (unlockBtn) unlockBtn.disabled = !select.value;
-  };
+  select.onchange = () => { if (unlockBtn) unlockBtn.disabled = !select.value; };
 }
 
 function setParentModePlaceholder(checked) {
@@ -94,43 +93,34 @@ function setParentModePlaceholder(checked) {
 }
 
 function reflectParentMode(settings) {
-  const allow = settings?.allowTempUnlocks !== false; // default true
-  const checked = !allow;
+  const parentMode = !!(settings && settings.parentMode);
+  setIf("parentModeToggle", (tgl) => { tgl.checked = parentMode; });
+  setText("parentModeState", parentMode ? "ON" : "OFF");
+  setParentModePlaceholder(parentMode);
 
-  setIf("parentModeToggle", (tgl) => { tgl.checked = checked; });
-  setText("parentModeState", checked ? "ON" : "OFF");
-  setParentModePlaceholder(checked);
-
-  // Disable/enable unlock UI
-  const disabledUnlocks = checked;
-  setIf("unlockSiteSelect", (el) => { el.disabled = disabledUnlocks; });
-  setIf("durationSelect", (el) => { el.disabled = disabledUnlocks; });
-  setIf("password", (el) => { el.disabled = disabledUnlocks; });
-  setIf("unlockBtn", (el) => { el.disabled = disabledUnlocks || !($("unlockSiteSelect")?.value); });
-  setText("unlockStatus", disabledUnlocks ? "Parent Mode is ON: unlocks disabled." : "");
-
-  // Disable/enable password change controls
-  setIf("newPassword", (el) => { el.disabled = checked; });
-  setIf("savePasswordBtn", (el) => { el.disabled = checked; });
-  if (checked) setText("settingsStatus", "Parent Mode is ON: password changes disabled.");
+  // Parent Mode DOES NOT disable unlock UI
+  // Only disable password change controls when Parent Mode is ON
+  setIf("newPassword", (el) => { el.disabled = parentMode; });
+  setIf("savePasswordBtn", (el) => { el.disabled = parentMode; });
+  if (parentMode) setText("settingsStatus", "Parent Mode is ON: password changes disabled.");
 }
 
 function loadState() {
   chrome.runtime.sendMessage({ action: "getState" }, (state) => {
     const blocked = state?.blockedSites || [];
+    gHasPassword = !!state?.hasPassword;
     renderBlocked(blocked);
     renderUnlockSelect(blocked);
     reflectParentMode(state?.settings);
   });
 }
 
-// ---------- wire up events after DOM ready ----------
+// --- events ---
 document.addEventListener("DOMContentLoaded", () => {
   setIf("blockBtn", (btn) => {
     btn.addEventListener("click", () => {
       const site = $("siteInput")?.value.trim();
       if (!site) return setText("status", "Enter a site to block.", false);
-
       chrome.runtime.sendMessage({ action: "block", site }, (res) => {
         if (res?.ok) setText("status", `Blocked ${res.host}.`);
         else setText("status", "Could not block site.", false);
@@ -157,7 +147,6 @@ document.addEventListener("DOMContentLoaded", () => {
       chrome.runtime.sendMessage({ action: "unlock", site, minutes, password }, (res) => {
         if (res?.ok) setText("unlockStatus", `Unlocked ${res.host} for ${minutes} min.`);
         else if (res?.error === "wrong_password") setText("unlockStatus", "Wrong password.", false);
-        else if (res?.error === "parent_mode") setText("unlockStatus", "Parent Mode is ON. Unlocks disabled.", false);
         else if (res?.error === "no_password_set") setText("unlockStatus", "No password set. Set one in Settings.", false);
         else setText("unlockStatus", "Could not unlock.", false);
       });
@@ -178,24 +167,39 @@ document.addEventListener("DOMContentLoaded", () => {
 
   setIf("parentModeToggle", (tgl) => {
     tgl.addEventListener("change", (e) => {
-      const wantEnable = e.target.checked; // checked => turn ON Parent Mode (disable unlocks)
+      const wantEnable = e.target.checked; // true means enabling Parent Mode
       const pw = $("parentModePassword")?.value.trim() || "";
 
+      // Edge case: cannot enable without a master password set
+      if (wantEnable && !gHasPassword) {
+        setText("settingsStatus", "Set a master password before enabling Parent Mode.", false);
+        e.target.checked = false; // revert
+        setParentModePlaceholder(false);
+        // Focus password setup to guide the user
+        const np = $("newPassword"); if (np) np.focus();
+        return;
+      }
+
+      // Require master password to toggle
       chrome.runtime.sendMessage(
-        { action: "toggleParentMode", allowTempUnlocks: !wantEnable, password: pw },
+        { action: "toggleParentMode", enableParentMode: wantEnable, password: pw },
         (res) => {
           if (res?.ok) {
             setText("settingsStatus", wantEnable ? "Parent Mode enabled." : "Parent Mode disabled.");
             reflectParentMode(res.settings);
-            if ($("parentModePassword")) $("parentModePassword").value = "";
+            const pmp = $("parentModePassword"); if (pmp) pmp.value = "";
           } else if (res?.error === "wrong_password") {
-            // revert toggle if wrong password
-            if ($("parentModeToggle")) $("parentModeToggle").checked = !wantEnable;
-            reflectParentMode({ allowTempUnlocks: !wantEnable }); // revert UI state
+            e.target.checked = !wantEnable; // revert
+            reflectParentMode({ parentMode: !wantEnable });
             setText("settingsStatus", "Wrong password for Parent Mode.", false);
+          } else if (res?.error === "no_password_set") {
+            e.target.checked = false;
+            reflectParentMode({ parentMode: false });
+            setText("settingsStatus", "Set a master password before enabling Parent Mode.", false);
+            const np = $("newPassword"); if (np) np.focus();
           } else {
-            if ($("parentModeToggle")) $("parentModeToggle").checked = !wantEnable;
-            reflectParentMode({ allowTempUnlocks: !wantEnable });
+            e.target.checked = !wantEnable;
+            reflectParentMode({ parentMode: !wantEnable });
             setText("settingsStatus", "Could not update Parent Mode.", false);
           }
         }
@@ -203,10 +207,9 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // initial load
   loadState();
 });
-git 
+
 
 
 

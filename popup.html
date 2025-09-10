@@ -14,6 +14,28 @@
     small { color: #666; }
     .muted { color: #888; font-size: 12px; }
     .section { border-top: 1px solid #eee; margin-top: 10px; padding-top: 10px; }
+
+    /* Toggle switch styles */
+    .toggle-wrap { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 44px; height: 24px;
+    }
+    .switch input { display: none; }
+    .slider {
+      position: absolute; cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: #ccc; transition: .2s; border-radius: 999px;
+    }
+    .slider:before {
+      position: absolute; content: "";
+      height: 18px; width: 18px; left: 3px; bottom: 3px;
+      background-color: white; transition: .2s; border-radius: 50%;
+      box-shadow: 0 1px 2px rgba(0,0,0,.2);
+    }
+    input:checked + .slider { background-color: #4caf50; }
+    input:checked + .slider:before { transform: translateX(20px); }
   </style>
 </head>
 <body>
@@ -54,18 +76,25 @@
       <button id="savePasswordBtn">Save password</button>
     </div>
 
-    <label>
-      <input type="checkbox" id="parentModeToggle" />
-      Enable <strong>Parent Mode</strong> (disable unlocks & password changes)
-    </label>
-    <input id="parentModePassword" type="password" placeholder="Enter password to change Parent Mode" />
-    <button id="applyParentModeBtn">Apply</button>
+    <div class="toggle-wrap">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <label class="switch">
+          <input type="checkbox" id="parentModeToggle" />
+          <span class="slider"></span>
+        </label>
+        <strong>Parent Mode</strong>
+      </div>
+      <small id="parentModeState" class="muted"></small>
+    </div>
+
+    <input id="parentModePassword" type="password" placeholder="" />
     <small id="settingsStatus" class="muted"></small>
   </div>
 
   <script src="popup.js"></script>
 </body>
 </html>
+
 
 
 

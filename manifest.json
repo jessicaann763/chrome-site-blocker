@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Site Blocker (Password + Parent Mode)",
-  "version": "2.2.0",
-  "description": "Block sites; temporarily unlock with a password and duration. Parent Mode disables unlocks and password changes.",
+  "version": "2.3.0",
+  "description": "Block sites; temporarily unlock with a password and duration. Parent Mode locks password changes but allows unlocks.",
   "permissions": ["storage", "tabs", "webNavigation"],
   "background": { "service_worker": "background.js" },
   "action": {
@@ -19,6 +19,7 @@
     "128": "icon128.png"
   }
 }
+
 
 
 
