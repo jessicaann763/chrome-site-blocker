@@ -17,11 +17,7 @@
 
     /* Toggle switch styles */
     .toggle-wrap { display:flex; align-items:center; justify-content:space-between; gap:10px; }
-    .switch {
-      position: relative;
-      display: inline-block;
-      width: 44px; height: 24px;
-    }
+    .switch { position: relative; display: inline-block; width: 44px; height: 24px; }
     .switch input { display: none; }
     .slider {
       position: absolute; cursor: pointer;
@@ -36,6 +32,9 @@
     }
     input:checked + .slider { background-color: #4caf50; }
     input:checked + .slider:before { transform: translateX(20px); }
+
+    /* Blur effect when Parent Mode is ON */
+    .blurred { filter: blur(3px); pointer-events: none; }
   </style>
 </head>
 <body>
@@ -63,7 +62,7 @@
         <option value="15">15 min</option>
         <option value="30">30 min</option>
       </select>
-      <input id="password" type="password" placeholder="Password" />
+      <input id="password" type="password" placeholder="Password (master)" />
     </div>
     <button id="unlockBtn" disabled>Unlock</button>
     <small id="unlockStatus" class="muted"></small>
@@ -71,8 +70,9 @@
 
   <div class="section">
     <h3>Settings</h3>
+    <!-- This is the ONE master password field. When Parent Mode is ON, it blurs/locks but remains the password used. -->
     <div class="row">
-      <input id="newPassword" type="password" placeholder="Set / change password" />
+      <input id="newPassword" type="password" placeholder="Set / change master password" />
       <button id="savePasswordBtn">Save password</button>
     </div>
 
@@ -87,13 +87,18 @@
       <small id="parentModeState" class="muted"></small>
     </div>
 
-    <input id="parentModePassword" type="password" placeholder="" />
+    <!-- This field ONLY appears when Parent Mode is ON (to disable it) -->
+    <div id="disableParentWrap" style="display:none;">
+      <input id="disableParentPassword" type="password" placeholder="Disable Parent Mode with master password" />
+    </div>
+
     <small id="settingsStatus" class="muted"></small>
   </div>
 
   <script src="popup.js"></script>
 </body>
 </html>
+
 
 
 

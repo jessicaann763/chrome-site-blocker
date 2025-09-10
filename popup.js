@@ -2,7 +2,8 @@
 const $ = (id) => document.getElementById(id);
 const setIf = (id, fn) => { const el = $(id); if (el) fn(el); };
 
-let gHasPassword = false; // from background getState()
+let gHasPassword = false; // from background
+let gParentMode = false;  // from background
 
 function setText(id, text = "", ok = true) {
   setIf(id, (el) => {
@@ -84,34 +85,33 @@ function renderUnlockSelect(list) {
   select.onchange = () => { if (unlockBtn) unlockBtn.disabled = !select.value; };
 }
 
-function setParentModePlaceholder(checked) {
-  setIf("parentModePassword", (input) => {
-    input.placeholder = checked
-      ? "Disable Parent Mode with master password"
-      : "Enable Parent Mode with master password";
-  });
-}
+function applyParentModeUI(parentMode) {
+  gParentMode = parentMode;
 
-function reflectParentMode(settings) {
-  const parentMode = !!(settings && settings.parentMode);
+  // Update toggle + status
   setIf("parentModeToggle", (tgl) => { tgl.checked = parentMode; });
   setText("parentModeState", parentMode ? "ON" : "OFF");
-  setParentModePlaceholder(parentMode);
 
-  // Parent Mode DOES NOT disable unlock UI
-  // Only disable password change controls when Parent Mode is ON
-  setIf("newPassword", (el) => { el.disabled = parentMode; });
-  setIf("savePasswordBtn", (el) => { el.disabled = parentMode; });
-  if (parentMode) setText("settingsStatus", "Parent Mode is ON: password changes disabled.");
+  // Blur/lock the master password field & button when ON
+  const np = $("newPassword");
+  const sp = $("savePasswordBtn");
+  if (np) { np.disabled = parentMode; np.classList.toggle("blurred", parentMode); }
+  if (sp) { sp.disabled = parentMode; sp.classList.toggle("blurred", parentMode); }
+
+  // Show/hide the "disable parent mode" password field
+  const wrap = $("disableParentWrap");
+  if (wrap) wrap.style.display = parentMode && gHasPassword ? "block" : "none";
 }
 
 function loadState() {
   chrome.runtime.sendMessage({ action: "getState" }, (state) => {
     const blocked = state?.blockedSites || [];
     gHasPassword = !!state?.hasPassword;
+    const parentMode = !!state?.settings?.parentMode;
+
     renderBlocked(blocked);
     renderUnlockSelect(blocked);
-    reflectParentMode(state?.settings);
+    applyParentModeUI(parentMode);
   });
 }
 
@@ -147,59 +147,67 @@ document.addEventListener("DOMContentLoaded", () => {
       chrome.runtime.sendMessage({ action: "unlock", site, minutes, password }, (res) => {
         if (res?.ok) setText("unlockStatus", `Unlocked ${res.host} for ${minutes} min.`);
         else if (res?.error === "wrong_password") setText("unlockStatus", "Wrong password.", false);
-        else if (res?.error === "no_password_set") setText("unlockStatus", "No password set. Set one in Settings.", false);
+        else if (res?.error === "no_password_set") setText("unlockStatus", "No master password set. Set one in Settings.", false);
         else setText("unlockStatus", "Could not unlock.", false);
       });
     });
   });
 
+  // Save/Change master password (only when Parent Mode is OFF)
   setIf("savePasswordBtn", (btn) => {
     btn.addEventListener("click", () => {
       const pw = $("newPassword")?.value || "";
       chrome.runtime.sendMessage({ action: "setPassword", password: pw }, (res) => {
-        if (res?.ok) setText("settingsStatus", "Password saved.");
-        else if (res?.error === "parent_mode_locked")
+        if (res?.ok) {
+          setText("settingsStatus", "Master password saved.");
+          gHasPassword = true;
+          applyParentModeUI(gParentMode);
+        } else if (res?.error === "parent_mode_locked") {
           setText("settingsStatus", "Parent Mode is ON: turn it OFF to change the password.", false);
-        else setText("settingsStatus", "Could not save password.", false);
+        } else {
+          setText("settingsStatus", "Could not save password.", false);
+        }
       });
     });
   });
 
+  // Toggle Parent Mode
   setIf("parentModeToggle", (tgl) => {
     tgl.addEventListener("change", (e) => {
-      const wantEnable = e.target.checked; // true means enabling Parent Mode
-      const pw = $("parentModePassword")?.value.trim() || "";
+      const wantEnable = e.target.checked;
 
-      // Edge case: cannot enable without a master password set
+      // Can't enable without a master password
       if (wantEnable && !gHasPassword) {
         setText("settingsStatus", "Set a master password before enabling Parent Mode.", false);
-        e.target.checked = false; // revert
-        setParentModePlaceholder(false);
-        // Focus password setup to guide the user
+        e.target.checked = false;
+        applyParentModeUI(false);
         const np = $("newPassword"); if (np) np.focus();
         return;
       }
 
-      // Require master password to toggle
+      // When disabling, we need the master password from the disable field
+      const disablePw = $("disableParentPassword")?.value.trim() || "";
+
       chrome.runtime.sendMessage(
-        { action: "toggleParentMode", enableParentMode: wantEnable, password: pw },
+        { action: "toggleParentMode", enableParentMode: wantEnable, password: wantEnable ? "" : disablePw },
         (res) => {
           if (res?.ok) {
             setText("settingsStatus", wantEnable ? "Parent Mode enabled." : "Parent Mode disabled.");
-            reflectParentMode(res.settings);
-            const pmp = $("parentModePassword"); if (pmp) pmp.value = "";
+            applyParentModeUI(res.settings.parentMode);
+            if (!wantEnable) { const dp = $("disableParentPassword"); if (dp) dp.value = ""; }
           } else if (res?.error === "wrong_password") {
-            e.target.checked = !wantEnable; // revert
-            reflectParentMode({ parentMode: !wantEnable });
-            setText("settingsStatus", "Wrong password for Parent Mode.", false);
+            e.target.checked = true; // remain ON (failed to disable)
+            applyParentModeUI(true);
+            setText("settingsStatus", "Wrong password to disable Parent Mode.", false);
           } else if (res?.error === "no_password_set") {
+            // Shouldn't happen on disable; on enable we handle above
             e.target.checked = false;
-            reflectParentMode({ parentMode: false });
-            setText("settingsStatus", "Set a master password before enabling Parent Mode.", false);
-            const np = $("newPassword"); if (np) np.focus();
+            applyParentModeUI(false);
+            setText("settingsStatus", "Set a master password first.", false);
           } else {
+            // generic failure: revert to previous state
             e.target.checked = !wantEnable;
-            reflectParentMode({ parentMode: !wantEnable });
+            applyParentModeUI(!wantEnable);
             setText("settingsStatus", "Could not update Parent Mode.", false);
           }
         }
@@ -209,6 +217,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   loadState();
 });
+
 
 
 
