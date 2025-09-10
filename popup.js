@@ -44,9 +44,49 @@ function renderBlocked(list) {
   });
 }
 
+function renderUnlockSelect(list) {
+  const select = document.getElementById("unlockSiteSelect");
+  const unlockBtn = document.getElementById("unlockBtn");
+  select.innerHTML = "";
+
+  if (!list || list.length === 0) {
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "No blocked sites";
+    select.appendChild(opt);
+    select.disabled = true;
+    unlockBtn.disabled = true;
+    return;
+  }
+
+  select.disabled = false;
+  unlockBtn.disabled = false;
+
+  // default placeholder option
+  const ph = document.createElement("option");
+  ph.value = "";
+  ph.textContent = "Select a site…";
+  ph.disabled = true;
+  ph.selected = true;
+  select.appendChild(ph);
+
+  list.forEach((host) => {
+    const opt = document.createElement("option");
+    opt.value = host;
+    opt.textContent = host;
+    select.appendChild(opt);
+  });
+
+  select.addEventListener("change", () => {
+    unlockBtn.disabled = !select.value;
+  });
+}
+
 function loadState() {
   chrome.runtime.sendMessage({ action: "getState" }, (state) => {
-    renderBlocked(state.blockedSites || []);
+    const blocked = state?.blockedSites || [];
+    renderBlocked(blocked);
+    renderUnlockSelect(blocked);
   });
 }
 
@@ -67,11 +107,11 @@ document.getElementById("blockBtn").addEventListener("click", () => {
 });
 
 document.getElementById("unlockBtn").addEventListener("click", () => {
-  const site = document.getElementById("unlockSite").value.trim();
+  const site = document.getElementById("unlockSiteSelect").value;
   const password = document.getElementById("password").value;
   const minutes = Number(document.getElementById("durationSelect").value);
 
-  if (!site) return setStatus("Enter a site to unlock.", false);
+  if (!site) return setStatus("Choose a site to unlock.", false);
 
   chrome.runtime.sendMessage({ action: "unlock", site, password, minutes }, (res) => {
     if (res?.ok) {
@@ -94,10 +134,8 @@ document.getElementById("savePasswordBtn").addEventListener("click", () => {
 document.getElementById("useCurrentForBlock").addEventListener("click", () => {
   currentTabHostname((h) => (document.getElementById("siteInput").value = h || ""));
 });
-document.getElementById("useCurrentForUnlock").addEventListener("click", () => {
-  currentTabHostname((h) => (document.getElementById("unlockSite").value = h || ""));
-});
 
 // init
 loadState();
+
 
