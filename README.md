@@ -34,3 +34,10 @@ A simple, privacy-friendly Chrome extension that helps you block distracting or 
 
 ##Installation 
  - will be live on chrome extension marketplace soon
+---
+Disclaimer
+This extension is provided “as is” without warranty of any kind, express or implied. The developer makes no guarantees regarding the effectiveness of the site blocking features.
+
+This extension should not be relied upon as a sole means of parental control, content filtering, or online safety. Children and technically advanced users may find ways to bypass or uninstall the extension. For stronger protection, please use Chrome’s supervised accounts, Google Family Link, or device-level parental controls in addition to this tool.
+
+By installing or using this extension, you agree that the developer is not liable for any damages, data loss, or consequences arising from its use or inability to use.
