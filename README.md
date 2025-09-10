@@ -1,46 +1,73 @@
+
+
 # Chrome Site Blocker
 
-A simple, privacy-friendly Chrome extension that helps you block distracting or inappropriate websites.  
+A simple, privacy-friendly Chrome extension that helps you block distracting or inappropriate websites.
 
-- Block any site by typing it in or blocking the current tab  
-- Temporary **unblock** with time limits (2, 5, 10, 15, 30 minutes)  
-- **Parent Mode**: requires a master password to unblock or change settings  
-- Clean UI with one-click site management  
-- Works fully offline — no accounts, no data collection  
+ *Time to touch grass and stop doomscrolling*
 
 ---
 
-##Features
+## Features
 
-- **Block Sites**  
-  Add domains manually (e.g., `reddit.com`) or block the current tab with one click.
+### Block Sites
 
-- **Temporary Unblock**  
-  Need to consult the reddit overlords? Temporarily unblock for 2–30 minutes.  
-  - When **Parent Mode** is OFF → no password required  
-  - When **Parent Mode** is ON → master password required
+* Add domains manually (e.g., `reddit.com`)
+* Block the current tab with one click
 
-- **Parent Mode**  
-  - Lock down the extension with a password  
-  - Prevent changes to blocked sites  
-  - Require password for temporary unblocks  
-  - Disable Parent Mode only with the password  
+### Temporary Unblock
 
-- **Password Security**  
-  - Master password stored as a **salted PBKDF2 hash** (never plaintext)  
-  - No accounts, no cloud storage, no tracking  
+* Unblock for 2, 5, 10, 15, or 30 minutes
+* **When Parent Mode is OFF** → no password required
+* **When Parent Mode is ON** → master password required
 
-**IMPORTANT NOTE: 
-  -If you forget your password, you will need to uninstall and re-install. In order to preserve data privacy I opted to not need a formal account to use this extension. You can change your password at any time without knowing your current if "parent mode" is disabled. To ensure kids don't uninstall the extension to bypass the controls, it's suggested to use a monitored google account.
+### Parent Mode
+
+* Lock down the extension with a password
+* Prevent changes to blocked sites
+* Require password for temporary unblocks
+* Disable Parent Mode only with the master password
+
+### Password Security
+
+* Master password stored as a **salted PBKDF2 hash** (never plaintext)
+* No accounts, no cloud storage, no tracking
+
+ **Important Note**:
+
+* If you forget your password, you will need to uninstall and reinstall.
+* To preserve privacy, no accounts are required.
+* You can change your password at any time if Parent Mode is disabled.
+* To ensure kids don’t uninstall the extension to bypass controls, it’s suggested to use a monitored Google account.
+
 ---
 
-##Installation 
- - will be live on chrome extension marketplace soon
- -obvi u are allowed to download and use these files in chrome://extensions/ with dev mode turned on (Load Package)
+## Installation
+
+This extension will be live on the **Chrome Web Store** soon.
+
+In the meantime, you can install it manually for development:
+
+1. Clone or download this repository.
+2. Open Chrome and go to `chrome://extensions/`.
+3. Enable **Developer Mode**.
+4. Click **Load unpacked** and select this project folder.
+
 ---
-Disclaimer
-This extension is provided “as is” without warranty of any kind, express or implied. The developer makes no guarantees regarding the effectiveness of the site blocking features.
 
-This extension should not be relied upon as a sole means of parental control, content filtering, or online safety. Children and technically advanced users may find ways to bypass or uninstall the extension. For stronger protection, please use Chrome’s supervised accounts, Google Family Link, or device-level parental controls in addition to this tool.
+##  Disclaimer
 
-By installing or using this extension, you agree that the developer is not liable for any damages, data loss, or consequences arising from its use or inability to use.
+This extension is provided **“as is”**, without warranty of any kind, express or implied. The developer makes no guarantees regarding the effectiveness of the site blocking features.
+
+This extension should **not** be relied upon as a sole means of parental control, content filtering, or online safety. Children and technically advanced users may find ways to bypass or uninstall the extension. For stronger protection, please use:
+
+* Chrome’s **supervised accounts**
+* Google **Family Link**
+* Device-level parental controls
+
+By installing or using this extension, you agree that the developer is **not liable** for any damages, data loss, or consequences arising from its use or inability to use.
+
+---
+
+
+
