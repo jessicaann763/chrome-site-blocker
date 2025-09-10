@@ -2,7 +2,7 @@
 const $ = (id) => document.getElementById(id);
 const setIf = (id, fn) => { const el = $(id); if (el) fn(el); };
 
-let gHasPassword = false; // non-empty master password?
+let gHasPassword = false; // has salted hash stored (from background state)
 let gParentMode  = false;
 let unlockTimer;
 
@@ -15,7 +15,6 @@ function setText(id, text = "", ok = true) {
     if (text) setTimeout(() => { const e = $(id); if (e) e.textContent = ""; }, 3000);
   });
 }
-
 function toast(msg, ok = true) {
   const host = $("toast");
   if (!host) return;
@@ -31,11 +30,9 @@ function toast(msg, ok = true) {
   setTimeout(() => { el.style.opacity = "0"; el.style.transform = "translateY(-6px)"; }, 1800);
   setTimeout(() => host.removeChild(el), 2200);
 }
-
 function currentTab(cb) {
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => cb(tabs?.[0]));
 }
-
 function currentTabHostname(cb) {
   currentTab((tab) => {
     try {
@@ -47,9 +44,7 @@ function currentTabHostname(cb) {
   });
 }
 
-/**
- * If you're on the same host when you BLOCK it, jump to blocked.html immediately.
- */
+/** If you're on the same host when you BLOCK it, jump to blocked.html immediately. */
 function blockCurrentTabIfMatches(host) {
   currentTab((tab) => {
     if (!tab?.url) return;
@@ -68,11 +63,7 @@ function blockCurrentTabIfMatches(host) {
   });
 }
 
-/**
- * Refresh or navigate the current tab if it's the same host
- * or if it's on the extension's blocked.html for that host.
- * If blocked.html has a ?url= param pointing to the original full URL, we go there.
- */
+/** Refresh/navigate current tab after unlock/unblock back to exact URL if safe. */
 function refreshIfCurrentTabMatches(host) {
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     const tab = tabs?.[0];
@@ -85,7 +76,7 @@ function refreshIfCurrentTabMatches(host) {
 
       if (isBlockedPage) {
         const qs = new URLSearchParams(current.search);
-        const targetUrl = qs.get("url");           // full original URL (encoded by background)
+        const targetUrl = qs.get("url");
         const siteParam = (qs.get("site") || "").toLowerCase();
 
         if (targetUrl) {
@@ -101,25 +92,17 @@ function refreshIfCurrentTabMatches(host) {
               chrome.tabs.update(tab.id, { url: targetUrl });
               return;
             }
-          } catch {
-            // fall through to root
-          }
+          } catch {}
         }
-
-        // Fallback: send to site root if exact URL unavailable/unsafe
         chrome.tabs.update(tab.id, { url: `https://${host}/` });
         return;
       }
 
-      // If we’re already on that host (or its subdomain), just reload
       let h = current.hostname.toLowerCase();
       if (h.startsWith("www.")) h = h.slice(4);
       const matches = h === host || h.endsWith("." + host);
       if (matches) chrome.tabs.reload(tab.id);
-
-    } catch {
-      // ignore
-    }
+    } catch {}
   });
 }
 
@@ -138,16 +121,29 @@ function renderBlocked(list) {
       pill.textContent = host + " ";
       const btn = document.createElement("button");
       btn.textContent = "✕";
-      btn.title = "Unblock";
-      btn.addEventListener("click", () => {
-        chrome.runtime.sendMessage({ action: "unblockSite", site: host }, (res) => {
-          if (res?.ok) {
-            toast(`Unblocked ${host}`);
-            loadState();
-            refreshIfCurrentTabMatches(host); // return to exact page / refresh if relevant
-          }
+      btn.title = gParentMode ? "Unblock disabled in Parent Mode" : "Unblock";
+
+      if (gParentMode) {
+        // When Parent Mode is ON, disable the remove button entirely
+        btn.disabled = true;
+        // optional visual hint if you don't have CSS for disabled:
+        btn.style.opacity = "0.5";
+        btn.style.cursor = "not-allowed";
+      } else {
+        // Only attach the unblock logic if Parent Mode is OFF
+        btn.addEventListener("click", () => {
+          chrome.runtime.sendMessage({ action: "unblockSite", site: host }, (res) => {
+            if (res?.ok) {
+              toast(`Unblocked ${host}`);
+              loadState();
+              refreshIfCurrentTabMatches(host);
+            } else {
+              toast("Could not unblock", false);
+            }
+          });
         });
-      });
+      }
+
       pill.appendChild(btn);
       wrap.appendChild(pill);
     });
@@ -214,11 +210,22 @@ function applyParentModeUI(parentMode) {
   setIf("parentModeToggle", (tgl) => { tgl.checked = parentMode; });
   setText("parentModeState", parentMode ? "ON" : "OFF");
 
+  // Unlock password field: enabled only when Parent Mode is ON
+  const pwField = $("password");
+  if (pwField) {
+    pwField.disabled = !parentMode;
+    pwField.placeholder = parentMode ? "Password (master)" : "No password needed (Parent Mode OFF)";
+    pwField.value = ""; // avoid lingering text
+    pwField.classList.toggle("blurred", !parentMode);
+  }
+
+  // Blur/lock master password change when Parent Mode is ON
   const np = $("newPassword");
   const sp = $("savePasswordBtn");
   if (np) { np.disabled = parentMode; np.classList.toggle("blurred", parentMode); }
   if (sp) { sp.disabled = parentMode; sp.classList.toggle("blurred", parentMode); }
 
+  // Show disable-parent-mode controls only when ON and a password exists
   const wrap = $("disableParentWrap");
   if (wrap) wrap.style.display = parentMode && gHasPassword ? "block" : "none";
 }
@@ -237,7 +244,7 @@ function loadState() {
 
 // ----- events -----
 document.addEventListener("DOMContentLoaded", () => {
-  // Add via text input
+  // Block via text input
   setIf("blockBtn", (btn) => {
     btn.addEventListener("click", () => {
       const site = $("siteInput")?.value.trim();
@@ -247,11 +254,8 @@ document.addEventListener("DOMContentLoaded", () => {
           toast(`Blocked ${res.host}`);
           $("siteInput").value = "";
           loadState();
-          // NEW: if you're on that site now, jump to blocked.html immediately
-          blockCurrentTabIfMatches(res.host);
-        } else {
-          setText("status", "Could not block site.", false);
-        }
+          blockCurrentTabIfMatches(res.host); // immediately block if on that site
+        } else setText("status", "Could not block site.", false);
       });
     });
   });
@@ -265,33 +269,31 @@ document.addEventListener("DOMContentLoaded", () => {
           if (res?.ok) {
             toast(`Blocked ${res.host}`);
             loadState();
-            // NEW: since we just blocked the current site's host, jump to blocked.html
             blockCurrentTabIfMatches(res.host);
-          } else {
-            setText("status", "Could not block site.", false);
-          }
+          } else setText("status", "Could not block site.", false);
         });
       });
     });
   });
 
-  // Temporary unlock
+  // Temporary unlock — password only required in Parent Mode
   setIf("unlockBtn", (btn) => {
     btn.addEventListener("click", () => {
       const site = $("unlockSiteSelect")?.value;
       const minutes = Number($("durationSelect")?.value || 0);
-      const password = $("password")?.value || "";
+      const password = gParentMode ? ($("password")?.value || "") : ""; // only when Parent Mode ON
       if (!site) return setText("unlockStatus", "Choose a site to unlock.", false);
 
       chrome.runtime.sendMessage({ action: "unlock", site, minutes, password }, (res) => {
         if (res?.ok) {
           toast(`Unlocked ${res.host} for ${minutes}m`);
           if (res.expiry) showUnlockCountdown(res.host, res.expiry);
-          refreshIfCurrentTabMatches(res.host); // return to exact page / refresh if relevant
+          refreshIfCurrentTabMatches(res.host);
+          if (gParentMode) { const f = $("password"); if (f) f.value = ""; }
         } else if (res?.error === "wrong_password") {
           setText("unlockStatus", "Wrong password.", false);
         } else if (res?.error === "no_password_set") {
-          setText("unlockStatus", "No master password set. Set one in Settings.", false);
+          setText("unlockStatus", "No master password set.", false);
         } else {
           setText("unlockStatus", "Could not unlock.", false);
         }
@@ -299,7 +301,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // Save/Change master password (only when Parent Mode is OFF)
+  // Save/Change master password (blocked while Parent Mode ON)
   setIf("savePasswordBtn", (btn) => {
     btn.addEventListener("click", () => {
       const npEl = $("newPassword");
@@ -314,7 +316,7 @@ document.addEventListener("DOMContentLoaded", () => {
           toast("Master password saved");
           gHasPassword = true;
           applyParentModeUI(gParentMode);
-          if (npEl) npEl.value = ""; // clear input after successful save
+          if (npEl) npEl.value = "";
         } else if (res?.error === "weak_password") {
           setText("settingsStatus", "Password must be at least 4 characters.", false);
         } else if (res?.error === "parent_mode_locked") {
@@ -391,4 +393,3 @@ document.addEventListener("DOMContentLoaded", () => {
 
   loadState();
 });
-
