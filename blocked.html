@@ -4,35 +4,55 @@
   <meta charset="utf-8" />
   <title>Blocked</title>
   <style>
-    body { font-family: system-ui, Arial; text-align: center; margin-top: 15vh; }
-    .card { display: inline-block; padding: 24px; border: 1px solid #ddd; border-radius: 12px; }
-    h1 { margin: 0 0 8px; }
-    p { color: #555; }
-    small { color: #888; }
+    :root {
+      --fg:#111; --muted:#666; --border:#e5e7eb; --card:#fafafa; --radius:12px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --fg:#e5e7eb; --muted:#9ca3af; --border:#1f2937; --card:#0f141b; }
+      body { background:#0b0f14; }
+    }
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      color: var(--fg);
+      text-align: center;
+      margin: 0;
+      padding: 0;
+      background: #fff;
+    }
+    .wrap {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+    .card {
+      display: inline-block;
+      padding: 24px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--card);
+      box-shadow: 0 6px 20px rgba(0,0,0,.08);
+      max-width: 520px;
+      width: 100%;
+    }
+    h1 { margin: 0 0 8px; font-size: 20px; }
+    p { color: var(--muted); margin: 6px 0; }
+    small { color: var(--muted); }
+    #siteP { font-weight: 600; color: var(--fg); }
   </style>
 </head>
 <body>
-  <div class="card">
-    <h1>🚫 This site is blocked</h1>
-    <p id="siteP"></p>
-    <p>Open the extension popup to manage settings.</p>
-    <small id="pathInfo"></small>
+  <div class="wrap">
+    <div class="card">
+      <h1>🚫 This site is blocked</h1>
+      <p>Domain: <span id="siteP"></span></p>
+      <p>Open the extension popup to manage settings.</p>
+      <small id="pathInfo"></small>
+    </div>
   </div>
-  <script>
-    const qs = new URLSearchParams(location.search);
-    const site = (qs.get("site") || "").toLowerCase();
-    const url  = qs.get("url");
-    if (site) document.getElementById("siteP").textContent = site;
 
-    // Optional: show the exact path for context
-    if (url) {
-      try {
-        const u = new URL(url);
-        const info = `${u.pathname}${u.search}${u.hash}` || "/";
-        document.getElementById("pathInfo").textContent = info;
-      } catch {}
-    }
-  </script>
+  <!-- External script only (no inline JS for MV3 CSP) -->
+  <script src="blocked.js"></script>
 </body>
 </html>
 
