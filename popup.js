@@ -10,7 +10,7 @@ function sendMessage(msg) {
 
 // Render blocked sites
 async function render() {
-  const state = await sendMessage({ type: "getState" });
+  const state = await sendMessage({ action: "getState" });
   blockedList.innerHTML = "";
 
   state.blockedSites.forEach((site) => {
@@ -21,7 +21,7 @@ async function render() {
     const btn = document.createElement("button");
     btn.textContent = "×";
     btn.onclick = async () => {
-      await sendMessage({ type: "unblockSite": true, site });
+      await sendMessage({ action: "unblockSite", site });
       render();
     };
 
@@ -57,25 +57,33 @@ function renderTimers(unblocks) {
 }
 
 // Add site
-blockBtn.onclick = async () => {
+async function blockSite() {
   const site = siteInput.value.trim();
   if (!site) return;
-  await sendMessage({ type: "blockSite", site });
+  await sendMessage({ action: "block", site });
   siteInput.value = "";
   render();
-};
+}
+
+blockBtn.onclick = blockSite;
+
+// Hitting Enter behaves like clicking Block
+siteInput.addEventListener("keyup", (e) => {
+  if (e.key === "Enter") {
+    blockSite();
+  }
+});
 
 // Temp unblock action
 document.getElementById("tempUnblockBtn").onclick = async () => {
   const site = document.getElementById("tempSiteInput").value.trim();
   const duration = parseInt(document.getElementById("tempDurationInput").value, 10);
   if (!site || !duration) return;
-  await sendMessage({ type: "tempUnblock", site, duration });
+  await sendMessage({ action: "tempUnblock", site, duration });
   render();
 };
 
 render();
-
 
 
 

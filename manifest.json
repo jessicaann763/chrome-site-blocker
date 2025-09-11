@@ -1,15 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Site Blocker",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "Block distracting sites. Temporary unblocks. Parent Mode with password. Privacy-first and fully offline.",
   "action": {
     "default_title": "Site Blocker",
     "default_popup": "popup.html"
   },
   "background": {
-    "service_worker": "background.js",
-    "type": "module"
+    "service_worker": "background.js"
   },
   "icons": {
     "16": "icon16.png",
@@ -35,6 +34,7 @@
     "extension_pages": "script-src 'self'; object-src 'self'"
   }
 }
+
 
 
 
