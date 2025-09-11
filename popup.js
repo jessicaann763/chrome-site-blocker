@@ -1,3 +1,4 @@
+// popup.js
 const $ = (id) => document.getElementById(id);
 const setIf = (id, fn) => { const el = $(id); if (el) fn(el); };
 
@@ -109,10 +110,8 @@ function showUnlockCountdown(host, expiryMs) {
   tick();
   unlockTimer = setInterval(tick, 1000);
 }
-
 function updateCountdownFromState() {
   const now = Date.now();
-  // Prefer countdown for the current tab's host if it's unlocked
   currentTabHostname((h) => {
     let pick = null;
     if (h) {
@@ -183,9 +182,10 @@ function renderUnlockSelect(list) {
   }
   select.disabled = false;
 
+  // CHANGED: exact phrasing you wanted
   const ph = document.createElement("option");
   ph.value = "";
-  ph.textContent = "Select a site…";
+  ph.textContent = "Select Site";
   ph.disabled = true;
   ph.selected = true;
   select.appendChild(ph);
@@ -199,7 +199,6 @@ function renderUnlockSelect(list) {
 
   select.onchange = () => { if (unlockBtn) unlockBtn.disabled = !select.value; };
 
-  // If selected site is already unlocked, start countdown immediately
   select.addEventListener("change", () => {
     const host = select.value;
     const t = gTempUnlock?.[host];
@@ -238,27 +237,39 @@ function loadState() {
     renderBlocked(blocked);
     renderUnlockSelect(blocked);
     applyParentModeUI(parentMode);
-    updateCountdownFromState(); // << persistent countdown
+    updateCountdownFromState();
   });
 }
 
 // ------- events -------
 document.addEventListener("DOMContentLoaded", () => {
-  setIf("blockBtn", (btn) => {
-    btn.addEventListener("click", () => {
-      const site = $("siteInput")?.value.trim();
-      if (!site) return setText("status", "Enter a site to block.", false);
-      chrome.runtime.sendMessage({ action: "block", site }, (res) => {
-        if (res?.ok) {
-          toast(`Blocked ${res.host}`);
-          $("siteInput").value = "";
-          loadState();
-          blockCurrentTabIfMatches(res.host);
-        } else {
-          setText("status", "Invalid site (cannot block Chrome internal pages).", false);
-        }
-      });
+  // NEW: Pressing Enter inside the site field acts like clicking "Block"
+  const triggerBlock = () => {
+    const site = $("siteInput")?.value.trim();
+    if (!site) return setText("status", "Enter a site to block.", false);
+    chrome.runtime.sendMessage({ action: "block", site }, (res) => {
+      if (res?.ok) {
+        toast(`Blocked ${res.host}`);
+        $("siteInput").value = "";
+        loadState();
+        blockCurrentTabIfMatches(res.host);
+      } else {
+        setText("status", "Invalid site (cannot block Chrome internal pages).", false);
+      }
     });
+  };
+
+  setIf("siteInput", (inp) => {
+    inp.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        triggerBlock();
+      }
+    });
+  });
+
+  setIf("blockBtn", (btn) => {
+    btn.addEventListener("click", triggerBlock);
   });
 
   setIf("blockCurrentBtn", (btn) => {
@@ -291,7 +302,6 @@ document.addEventListener("DOMContentLoaded", () => {
           if (res.expiry) showUnlockCountdown(res.host, res.expiry);
           refreshIfCurrentTabMatches(res.host);
           if (gParentMode) { const f = $("password"); if (f) f.value = ""; }
-          // refresh cached state so persistent countdown works if popup closes/reopens
           loadState();
         } else if (res?.error === "wrong_password") {
           setText("unlockStatus", "Wrong password.", false);
@@ -384,3 +394,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   loadState();
 });
+
+
+
+
