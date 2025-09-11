@@ -49,32 +49,36 @@ chrome.webNavigation.onBeforeNavigate.addListener((details) => {
   }
 });
 
-// Handle messages
+// Handle messages (use `action` to match popup.js)
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg.type === "getState") {
+  if (msg.action === "getState") {
     sendResponse({ blockedSites, temporaryUnblocks });
   }
 
-  if (msg.type === "blockSite") {
+  if (msg.action === "block") {
     const host = getHostname(msg.site);
     if (host && !blockedSites.includes(host)) {
       blockedSites.push(host);
       saveState();
+      sendResponse({ ok: true, host });
+    } else {
+      sendResponse({ ok: false });
     }
-    sendResponse(true);
   }
 
-  if (msg.type === "unblockSite") {
+  if (msg.action === "unblockSite") {
     const host = getHostname(msg.site);
     if (host) {
       blockedSites = blockedSites.filter((s) => s !== host);
       delete temporaryUnblocks[host];
       saveState();
+      sendResponse({ ok: true, host });
+    } else {
+      sendResponse({ ok: false });
     }
-    sendResponse(true);
   }
 
-  if (msg.type === "tempUnblock") {
+  if (msg.action === "tempUnblock") {
     const host = getHostname(msg.site);
     if (host) {
       temporaryUnblocks[host] = Date.now() + msg.duration * 1000;
@@ -90,9 +94,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           }
         }
       });
-    }
-    sendResponse(true);
-  }
 
-  return true;
-});
+      sendResponse
+
