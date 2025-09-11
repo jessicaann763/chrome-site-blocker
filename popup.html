@@ -1,173 +1,103 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="utf-8" />
+  <meta charset="utf-8">
   <title>Site Blocker</title>
   <style>
-    :root {
-      --bg: #fff;
-      --fg: #111;
-      --muted: #6b7280;
-      --card: #fafafa;
-      --border: #e5e7eb;
-      --primary: #2563eb;
-      --primary-fg: #fff;
-      --danger: #dc2626;
-      --ring: #93c5fd;
-      --shadow: 0 6px 20px rgba(0,0,0,.08);
-      --radius: 14px;
-    }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg: #0b0f14;
-        --fg: #e5e7eb;
-        --muted: #9ca3af;
-        --card: #0f141b;
-        --border: #1f2937;
-        --primary: #60a5fa;
-        --primary-fg: #0b0f14;
-        --danger: #f87171;
-        --ring: #2563eb;
-        --shadow: 0 6px 20px rgba(0,0,0,.35);
-      }
-    }
-    * { box-sizing: border-box; }
-    html, body { margin: 0; padding: 0; }
     body {
-      font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-      color: var(--fg);
-      background: var(--bg);
-      width: 350px;
-      padding: 14px;
+      font-family: system-ui, sans-serif;
+      font-size: 14px;
+      margin: 12px;
+      min-width: 280px;
+      max-width: 340px;
+      color: #222;
     }
-    h3 { margin: 0 0 10px; font-size: 15px; }
-    .section {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 12px;
-      margin: 12px 0;
-      box-shadow: var(--shadow);
+    h2 {
+      font-size: 16px;
+      margin: 0 0 8px;
     }
-    input, select, button {
-      width: 100%;
-      margin: 6px 0;
-      padding: 10px 12px;
-      border-radius: 10px;
-      border: 1px solid var(--border);
-      background: var(--bg);
-      color: var(--fg);
-      transition: box-shadow .15s ease, transform .04s ease, background .15s;
+    section {
+      margin-bottom: 14px;
     }
-    input:focus, select:focus { outline: none; box-shadow: 0 0 0 3px var(--ring); }
-    button { background: var(--card); cursor: pointer; }
-    button:hover { filter: brightness(1.02); }
-    button:active { transform: translateY(1px); }
-    .btn-primary { background: var(--primary); color: var(--primary-fg); border-color: transparent; }
-    .btn-danger  { background: var(--danger);  color: #fff; border-color: transparent; }
-    .muted { color: var(--muted); font-size: 12px; }
-    .row { display: flex; gap: 8px; }
-    .row > * { flex: 1; }
-    .pills { display: flex; flex-wrap: wrap; gap: 8px; }
+    #blockedList {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 6px;
+    }
     .pill {
-      display: inline-flex; align-items: center; gap: 8px;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      padding: 6px 10px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
       border-radius: 999px;
+      border: 1px solid currentColor;
+      background: transparent;
     }
     .pill button {
-      width: auto; padding: 0 6px; border: none; background: transparent; color: var(--muted);
+      border: none;
+      background: none;
+      font-size: 14px;
+      cursor: pointer;
     }
-    .pill button:hover { color: var(--danger); }
-
-    /* Toggle switch */
-    .toggle-wrap { display:flex; align-items:center; justify-content:space-between; gap:10px; }
-    .switch { position: relative; display: inline-block; width: 44px; height: 24px; }
-    .switch input { display: none; }
-    .slider {
-      position: absolute; inset: 0; cursor: pointer;
-      background-color: #cbd5e1; border-radius: 999px; transition: .2s;
+    input, select, button {
+      font-size: 14px;
+      padding: 4px 6px;
+      border-radius: 6px;
+      border: 1px solid #aaa;
     }
-    .slider:before {
-      position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px;
-      background-color: white; border-radius: 50%; transition: .2s;
-      box-shadow: 0 1px 2px rgba(0,0,0,.25);
+    button {
+      cursor: pointer;
+      background: #eee;
     }
-    input:checked + .slider { background-color: var(--primary); }
-    input:checked + .slider:before { transform: translateX(20px); }
-
-    .blurred { filter: blur(3px); pointer-events: none; }
-
-    #toast { position: fixed; inset-inline: 0; top: 8px; display:flex; justify-content:center; pointer-events:none; }
   </style>
 </head>
 <body>
-  <div id="toast"></div>
+  <h2>Site Blocker</h2>
 
-  <div class="section">
-    <h3>Blocked Sites</h3>
-    <div id="blockedList" class="pills"></div>
-  </div>
+  <!-- Block new site -->
+  <section>
+    <label for="siteInput">Block a site:</label><br>
+    <input id="siteInput" type="text" placeholder="example.com">
+    <button id="blockBtn">Block</button>
+  </section>
 
-  <div class="section">
-    <h3>Add Site to Block</h3>
-    <div class="row">
-      <input id="siteInput" placeholder="reddit.com" />
-      <button id="blockCurrentBtn" class="btn-primary" title="Block the active tab's site">Block current site</button>
-    </div>
-    <button id="blockBtn" class="btn-primary">Block</button>
-    <small id="status" class="muted"></small>
-  </div>
+  <!-- List of blocked sites -->
+  <section>
+    <strong>Blocked Sites</strong>
+    <div id="blockedList"></div>
+  </section>
 
-  <div class="section">
-    <h3>Temporary Unblock</h3>
-    <select id="unlockSiteSelect"></select>
-    <div class="row">
-      <select id="durationSelect">
-        <option value="2">2 min</option>
-        <option value="5" selected>5 min</option>
-        <option value="10">10 min</option>
-        <option value="15">15 min</option>
-        <option value="30">30 min</option>
-      </select>
-      <input id="password" type="password" placeholder="Password (master)" />
-    </div>
-    <button id="unlockBtn" class="btn-primary" disabled>Unlock</button>
-    <small id="unlockStatus" class="muted"></small>
-  </div>
+  <!-- Temporary unblock -->
+  <section>
+    <strong>Temporary Unblock</strong><br>
+    <label for="unblockSelect">Select Site</label><br>
+    <select id="unblockSelect"></select>
+    <select id="unblockDuration">
+      <option value="2">2 minutes</option>
+      <option value="5">5 minutes</option>
+      <option value="10">10 minutes</option>
+      <option value="30">30 minutes</option>
+      <option value="60">1 hour</option>
+    </select>
+    <button id="unblockBtn">Unblock</button>
+  </section>
 
-  <div class="section">
-    <h3>Password & Parent Mode</h3>
-    <div class="row">
-      <input id="newPassword" type="password" placeholder="Set / change master password" />
-      <button id="savePasswordBtn" class="btn-primary">Save password</button>
-    </div>
+  <!-- Active unblocks / timers -->
+  <section id="active-unlocks-section">
+    <strong>Active Unblocks</strong>
+    <div id="active-unlocks" style="display:flex;flex-direction:column;gap:6px;"></div>
+    <div id="no-active-unlocks" style="opacity:.7;">None</div>
+  </section>
 
-    <div class="toggle-wrap">
-      <div style="display:flex; align-items:center; gap:10px;">
-        <label class="switch">
-          <input type="checkbox" id="parentModeToggle" />
-          <span class="slider"></span>
-        </label>
-        <strong>Parent Mode</strong>
-      </div>
-      <small id="parentModeState" class="muted"></small>
-    </div>
-
-    <div id="disableParentWrap" style="display:none;">
-      <input id="disableParentPassword" type="password" placeholder="Disable Parent Mode with master password" />
-      <button id="disableParentBtn" class="btn-danger">Disable Parent Mode</button>
-    </div>
-
-    <small id="settingsStatus" class="muted"></small>
-  </div>
+  <!-- Parent mode toggle (if applicable) -->
+  <section>
+    <label><input type="checkbox" id="parentModeToggle"> Parent Mode</label>
+  </section>
 
   <script src="popup.js"></script>
 </body>
 </html>
-
-
 
 
 
