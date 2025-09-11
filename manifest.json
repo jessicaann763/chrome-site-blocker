@@ -1,40 +1,51 @@
 {
   "manifest_version": 3,
   "name": "Site Blocker",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "Block distracting sites. Temporary unblocks. Parent Mode with password. Privacy-first and fully offline.",
+
   "action": {
     "default_title": "Site Blocker",
     "default_popup": "popup.html"
   },
+
   "background": {
-    "service_worker": "background.js",
-    "type": "module"
+    "service_worker": "background.js"
+    /* NOTE: remove "type":"module" unless you actually use ES module imports.
+       Your current background.js doesn't import anything, so classic is safer. */
   },
-  "icons": {
-    "16": "icon16.png",
-    "48": "icon48.png",
-    "128": "icon128.png"
-  },
+
   "permissions": [
     "storage",
     "tabs",
+    "alarms",
+    "webRequest",
+    "webRequestBlocking",
     "webNavigation",
-    "alarms"
+    "scripting"
   ],
-  "host_permissions": [
-    "<all_urls>"
-  ],
+
+  "host_permissions": ["<all_urls>"],
+
+  "icons": {
+    "16": "icon16.png",
+    "32": "icon32.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
+
   "web_accessible_resources": [
     {
       "resources": ["blocked.html", "blocked.js"],
       "matches": ["<all_urls>"]
     }
   ],
+
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'"
   }
 }
+
 
 
 
