@@ -1,280 +1,219 @@
-// background.js (MV3)
+// background.js — adds scanning of already-open tabs on install/startup and after adding a block
 
-// ---------- Utilities ----------
-function normalizeHost(host) {
-  try {
-    if (!host) return "";
-    if (host.includes("://")) host = new URL(host).hostname;
-    host = host.trim().toLowerCase();
-    if (host.startsWith("www.")) host = host.slice(4);
-    return host;
-  } catch {
-    return "";
-  }
-}
-function hostFromUrl(u) {
-  try {
-    const x = new URL(u);
-    let h = x.hostname.toLowerCase();
-    if (h.startsWith("www.")) h = h.slice(4);
+const enc = new TextEncoder();
+
+// ---------- base64 helpers ----------
+function b64(bytes){let s="";for(let i=0;i<bytes.length;i++)s+=String.fromCharCode(bytes[i]);return btoa(s)}
+function b64bytes(b64str){const bin=atob(b64str||"");const out=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)out[i]=bin.charCodeAt(i);return out}
+
+// ---------- host utils ----------
+function normalizeHost(input){
+  try{
+    const u=input.includes("://")?new URL(input):new URL("https://"+input);
+    if(u.protocol!=="http:"&&u.protocol!=="https:")return "";
+    let h=u.hostname.toLowerCase(); if(h.startsWith("www.")) h=h.slice(4);
     return h;
-  } catch {
-    return "";
+  }catch{
+    let h=(input||"").trim().toLowerCase(); if(!h) return "";
+    if(h.startsWith("www.")) h=h.slice(4);
+    if(h==="newtab"||h==="new tab"||h==="chrome://newtab") return "";
+    return h;
   }
 }
-function isHttpHttps(u) {
-  try {
-    const x = new URL(u);
-    return x.protocol === "http:" || x.protocol === "https:";
-  } catch {
-    return false;
-  }
+function hostMatches(blockedHost, actualHost){
+  return actualHost===blockedHost || actualHost.endsWith("."+blockedHost);
 }
-function blockedPageBase() {
-  return chrome.runtime.getURL("blocked.html");
-}
-function blockedUrlFor(host, targetUrl) {
-  return chrome.runtime.getURL(
-    `blocked.html?site=${encodeURIComponent(host)}&url=${encodeURIComponent(targetUrl)}`
-  );
+function isReservedHost(host){
+  if(!host) return true;
+  const r=new Set(["newtab","new-tab","new tab","chrome","chrome-newtab","chrome.google.com","edge","about:blank"]);
+  return r.has(host);
 }
 
-// ---------- State ----------
-async function getState() {
-  const { state } = await chrome.storage.local.get("state");
-  return (
-    state || {
-      blockedSites: [],      // ["twitter.com", "reddit.com"]
-      tempUnlock: {},        // { "reddit.com": 1736299999999, ... }  epoch ms
-      settings: { parentMode: false },
-      password: ""           // store hashed in real life; plain for simplicity here
-    }
-  );
+// ---------- crypto (PBKDF2-SHA256) ----------
+function genSalt(len=16){const s=new Uint8Array(len); crypto.getRandomValues(s); return s;}
+async function deriveHash(pw,salt,iters=150000){
+  const key=await crypto.subtle.importKey("raw",enc.encode(pw),{name:"PBKDF2"},false,["deriveBits"]);
+  const bits=await crypto.subtle.deriveBits({name:"PBKDF2",hash:"SHA-256",salt:salt,iterations:iters},key,256);
+  return new Uint8Array(bits);
 }
-async function setState(next) {
-  await chrome.storage.local.set({ state: next });
+function ctEqual(a,b){ if(!a||!b||a.length!==b.length) return false; let d=0; for(let i=0;i<a.length;i++) d|=a[i]^b[i]; return d===0; }
+async function verifyPassword(input,saltB64,hashB64){ if(!saltB64||!hashB64) return false; const calc=await deriveHash(String(input||""), b64bytes(saltB64)); return ctEqual(calc,b64bytes(hashB64)); }
+
+// ---------- state ----------
+async function getState(){
+  return await chrome.storage.local.get({
+    blockedSites: [],
+    tempUnlock: {},          // { host: expiryMs }
+    passwordHash: "",
+    passwordSalt: "",
+    settings: { parentMode:false }
+  });
 }
+async function setState(patch){ return chrome.storage.local.set(patch); }
 
-// ---------- Alarms / Timers ----------
-function alarmNameFor(host, expiry) {
-  return `relock::${host}::${expiry}`;
-}
-async function scheduleRelock(host, expiryMs) {
-  await chrome.alarms.create(alarmNameFor(host, expiryMs), { when: expiryMs });
-}
-
-// Recreate alarms on startup (service worker may sleep)
-chrome.runtime.onStartup.addListener(async () => {
-  const state = await getState();
-  const now = Date.now();
-  for (const [host, expiry] of Object.entries(state.tempUnlock || {})) {
-    if (expiry > now) {
-      await scheduleRelock(host, expiry);
-    } else {
-      delete state.tempUnlock[host];
-    }
-  }
-  await setState(state);
-});
-
-chrome.alarms.onAlarm.addListener(async (alarm) => {
-  const m = alarm.name.match(/^relock::(.+?)::(\d+)$/);
-  if (!m) return;
-  const host = m[1];
-  const expiry = Number(m[2]);
-
-  const state = await getState();
-  const current = state.tempUnlock?.[host] || 0;
-
-  // Only re-lock if we're handling the latest and it's due
-  if (current && current <= Date.now() && current === expiry) {
-    delete state.tempUnlock[host];
-    await setState(state);
-    await redirectTabsBackToBlocked(host);
-  }
-});
-
-// ---------- Tab helpers ----------
-async function refreshAllTabsForHost(host) {
-  const base = blockedPageBase();
-  const tabs = await chrome.tabs.query({});
-  for (const tab of tabs) {
-    const url = tab.url || "";
-    if (!url) continue;
-
-    if (url.startsWith(base)) {
-      // blocked.html?site=...&url=...
-      try {
-        const u = new URL(url);
-        const qs = new URLSearchParams(u.search);
-        const siteParam = normalizeHost(qs.get("site") || "");
-        const targetUrl = qs.get("url");
-        if (!targetUrl) continue;
-
-        const targetHost = hostFromUrl(targetUrl);
-        const matches =
-          targetHost === host ||
-          targetHost.endsWith("." + host) ||
-          (siteParam && (targetHost === siteParam || targetHost.endsWith("." + siteParam)));
-
-        if (matches) chrome.tabs.update(tab.id, { url: targetUrl });
-      } catch {}
-      continue;
-    }
-
-    // Real web page: if it’s on same host, reload to let it through
-    const h = hostFromUrl(url);
-    if (h && (h === host || h.endsWith("." + host))) {
-      chrome.tabs.reload(tab.id);
-    }
+// ---------- alarms (re-lock after temporary unblock) ----------
+async function scheduleNextAlarm(stateOpt){
+  const state=stateOpt||await getState();
+  const now=Date.now();
+  const times=Object.values(state.tempUnlock||{}).filter(t=>t>now);
+  if(times.length){
+    const next=Math.min(...times);
+    chrome.alarms.create("relock",{ when: next+50 });
+  }else{
+    chrome.alarms.clear("relock");
   }
 }
 
-async function redirectTabsBackToBlocked(host) {
-  const tabs = await chrome.tabs.query({});
-  for (const tab of tabs) {
-    const url = tab.url || "";
-    if (!isHttpHttps(url)) continue;
-    const h = hostFromUrl(url);
-    if (!h) continue;
-    if (h === host || h.endsWith("." + host)) {
-      const to = blockedUrlFor(host, url);
-      chrome.tabs.update(tab.id, { url: to });
-    }
-  }
+async function enforceRelock(){
+  const state=await getState();
+  const now=Date.now();
+  const expired=Object.entries(state.tempUnlock||{}).filter(([,t])=>t<=now).map(([h])=>h);
+  if(!expired.length) return;
+  const nextUnlock={...(state.tempUnlock||{})}; for(const h of expired) delete nextUnlock[h];
+  await setState({ tempUnlock: nextUnlock });
+  await scanAllTabsAndRedirect({ ...state, tempUnlock: nextUnlock }); // re-enforce on open tabs
 }
+chrome.alarms.onAlarm.addListener(async (a)=>{ if(a.name!=="relock") return; await enforceRelock(); await scheduleNextAlarm(); });
 
-// ---------- Navigation interception ----------
-async function shouldBlockUrl(u) {
-  if (!isHttpHttps(u)) return false;
-  const state = await getState();
-  const host = hostFromUrl(u);
-  if (!host) return false;
+// ---------- NEW: scan and redirect already-open tabs ----------
+async function scanAllTabsAndRedirect(stateOpt){
+  const state=stateOpt||await getState();
+  const blocked=new Set(state.blockedSites||[]);
+  if(blocked.size===0) return;
 
-  // Check temp unlock
-  const expiry = state.tempUnlock?.[host] || state.tempUnlock?.[host.split(".").slice(-2).join(".")];
-  if (expiry && expiry > Date.now()) return false;
+  const tabs=await chrome.tabs.query({});
+  for(const tab of tabs){
+    const urlStr=tab.url;
+    if(!urlStr) continue;
+    try{
+      const u=new URL(urlStr);
+      if(u.protocol!=="http:" && u.protocol!=="https:") continue;
+      let host=u.hostname.toLowerCase(); if(host.startsWith("www.")) host=host.slice(4);
 
-  // Check block list (exact or parent)
-  const blocked = new Set(state.blockedSites.map(normalizeHost));
-  if (blocked.has(host)) return true;
-  // also block if parent domain appears in list (e.g., blocking "twitter.com" should catch "mobile.twitter.com")
-  const parts = host.split(".");
-  for (let i = 1; i < parts.length - 1; i++) {
-    const parent = parts.slice(i).join(".");
-    if (blocked.has(parent)) return true;
-  }
-  return false;
-}
+      // temp unlock?
+      const expiry = state.tempUnlock?.[host] || [...blocked].find(b=>hostMatches(b,host) && state.tempUnlock?.[b]);
+      const stillUnlocked = typeof expiry === "number" && Date.now() < expiry;
 
-chrome.webNavigation.onCommitted.addListener(async (details) => {
-  try {
-    const { url, tabId, frameId, transitionType } = details;
-    if (frameId !== 0) return; // main frame only
-    if (!(await shouldBlockUrl(url))) return;
-
-    const host = hostFromUrl(url);
-    if (!host) return;
-    const to = blockedUrlFor(host, url);
-    chrome.tabs.update(tabId, { url: to });
-  } catch {
-    // ignore
-  }
-}, { url: [{ schemes: ["http", "https"] }] });
-
-// ---------- Messages from popup / blocked page ----------
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  (async () => {
-    const state = await getState();
-    switch (msg.action) {
-      case "getState": {
-        sendResponse({
-          blockedSites: state.blockedSites || [],
-          tempUnlock: state.tempUnlock || {},
-          settings: state.settings || { parentMode: false },
-          hasPassword: !!(state.password && state.password.length >= 4)
-        });
-        break;
+      const match=[...blocked].find(b=>hostMatches(b,host));
+      if(match && !stillUnlocked){
+        const redirect = chrome.runtime.getURL(`blocked.html?site=${encodeURIComponent(match)}&url=${encodeURIComponent(urlStr)}`);
+        try{ await chrome.tabs.update(tab.id, { url: redirect }); }catch{}
       }
-      case "block": {
-        const host = normalizeHost(msg.site);
-        if (!host) return sendResponse({ ok: false });
-        if (["chrome.google.com"].includes(host)) return sendResponse({ ok: false });
-        const set = new Set(state.blockedSites.map(normalizeHost));
-        set.add(host);
-        state.blockedSites = [...set];
-        await setState(state);
-        sendResponse({ ok: true, host });
-        break;
-      }
-      case "unblockSite": {
-        const host = normalizeHost(msg.site);
-        if (!host) return sendResponse({ ok: false });
-        if (state.settings?.parentMode) return sendResponse({ ok: false, error: "parent_mode_locked" });
+    }catch{/* ignore */}
+  }
+}
 
-        state.blockedSites = (state.blockedSites || []).filter((h) => normalizeHost(h) !== host);
-        delete state.tempUnlock?.[host];
-        await setState(state);
-        sendResponse({ ok: true });
-        break;
-      }
-      case "unlock": {
-        const host = normalizeHost(msg.site);
-        const minutes = Number(msg.minutes || 0);
-        if (!host || !minutes) return sendResponse({ ok: false, error: "bad_input" });
+// ---------- navigation guard for new navigations ----------
+chrome.webNavigation.onBeforeNavigate.addListener(async (details)=>{
+  if(!details.url || details.frameId!==0) return;
+  let host;
+  try{
+    const u=new URL(details.url);
+    if(u.protocol!=="http:" && u.protocol!=="https:") return;
+    host=u.hostname.toLowerCase(); if(host.startsWith("www.")) host=host.slice(4);
+  }catch{ return; }
 
-        // If Parent Mode ON, require password
-        if (state.settings?.parentMode) {
-          const pw = (msg.password || "").trim();
-          if (!state.password) return sendResponse({ ok: false, error: "no_password_set" });
-          if (pw !== state.password) return sendResponse({ ok: false, error: "wrong_password" });
-        }
+  const { blockedSites, tempUnlock } = await getState();
+  const match = blockedSites.find(b=>hostMatches(b,host));
+  if(!match) return;
+  const expiry = tempUnlock[host] || tempUnlock[match];
+  if(expiry && Date.now()<expiry) return;
 
-        const proposed = Date.now() + minutes * 60_000;
-        const prev = state.tempUnlock?.[host] || 0;
-        const expiry = Math.max(prev, proposed);
+  const redirect = chrome.runtime.getURL(`blocked.html?site=${encodeURIComponent(match)}&url=${encodeURIComponent(details.url)}`);
+  try{ await chrome.tabs.update(details.tabId,{ url: redirect }); }catch{}
+}, { url:[{ urlMatches: ".*" }] });
 
-        state.tempUnlock = state.tempUnlock || {};
-        state.tempUnlock[host] = expiry;
-        await setState(state);
+// ---------- messages ----------
+chrome.runtime.onMessage.addListener((msg,_sender,sendResponse)=>{
+  (async ()=>{
+    const state=await getState();
+    const settings=state.settings||{ parentMode:false };
+    const hasPassword=!!state.passwordHash;
 
-        await scheduleRelock(host, expiry);
-        await refreshAllTabsForHost(host);
-
-        sendResponse({ ok: true, host, expiry });
-        break;
-      }
-      case "setPassword": {
-        if (state.settings?.parentMode) {
-          return sendResponse({ ok: false, error: "parent_mode_locked" });
-        }
-        const pw = (msg.password || "").trim();
-        if (!pw || pw.length < 4) return sendResponse({ ok: false, error: "weak_password" });
-        state.password = pw;
-        await setState(state);
-        sendResponse({ ok: true });
-        break;
-      }
-      case "toggleParentMode": {
-        const enable = !!msg.enableParentMode;
-        if (enable) {
-          if (!state.password) return sendResponse({ ok: false, error: "no_password_set" });
-          state.settings.parentMode = true;
-          await setState(state);
-          sendResponse({ ok: true, settings: state.settings });
-        } else {
-          const pw = (msg.password || "").trim();
-          if (!state.password) return sendResponse({ ok: false, error: "no_password_set" });
-          if (pw !== state.password) return sendResponse({ ok: false, error: "wrong_password" });
-          state.settings.parentMode = false;
-          await setState(state);
-          sendResponse({ ok: true, settings: state.settings });
-        }
-        break;
-      }
-      default:
-        sendResponse({ ok: false, error: "unknown_action" });
+    if(msg.action==="getState"){
+      sendResponse({ blockedSites:state.blockedSites, tempUnlock:state.tempUnlock, settings, hasPassword }); return;
     }
+
+    if(msg.action==="setPassword"){
+      if(settings.parentMode===true){ sendResponse({ok:false,error:"parent_mode_locked"}); return; }
+      const pw=String(msg.password??"").trim();
+      if(!pw || pw.length<4){ sendResponse({ok:false,error:"weak_password"}); return; }
+      const salt=genSalt(16); const hash=await deriveHash(pw,salt);
+      await setState({ passwordSalt:b64(salt), passwordHash:b64(hash) });
+      sendResponse({ok:true}); return;
+    }
+
+    if(msg.action==="toggleParentMode"){
+      const enable=!!msg.enableParentMode;
+      if(enable){
+        if(!hasPassword){ sendResponse({ok:false,error:"no_password_set"}); return; }
+        const next={...settings,parentMode:true}; await setState({settings:next});
+        sendResponse({ok:true,settings:next}); return;
+      }
+      const pw=String(msg.password||"").trim();
+      if(!hasPassword){ sendResponse({ok:false,error:"no_password_set"}); return; }
+      const ok=await verifyPassword(pw,state.passwordSalt,state.passwordHash);
+      if(!ok){ sendResponse({ok:false,error:"wrong_password"}); return; }
+      const next={...settings,parentMode:false}; await setState({settings:next});
+      sendResponse({ok:true,settings:next}); return;
+    }
+
+    if(msg.action==="block"){
+      const host=normalizeHost(msg.site);
+      if(!host || isReservedHost(host)){ sendResponse({ok:false,error:"invalid_host"}); return; }
+      const blocked=new Set(state.blockedSites); blocked.add(host);
+      const nextState={ ...state, blockedSites: Array.from(blocked) };
+      await setState({ blockedSites: Array.from(blocked) });
+      // NEW: immediately enforce against already-open tabs
+      await scanAllTabsAndRedirect(nextState);
+      sendResponse({ok:true,host}); return;
+    }
+
+    if(msg.action==="unblockSite"){
+      const host=normalizeHost(msg.site);
+      if(!host){ sendResponse({ok:false,error:"invalid_host"}); return; }
+      if(settings.parentMode===true){
+        const pw=String(msg.password||"").trim();
+        if(!hasPassword){ sendResponse({ok:false,error:"no_password_set"}); return; }
+        const ok=await verifyPassword(pw,state.passwordSalt,state.passwordHash);
+        if(!ok){ sendResponse({ok:false,error:"wrong_password"}); return; }
+      }
+      const nextBlocked=state.blockedSites.filter(h=>h!==host);
+      const nextUnlock={ ...(state.tempUnlock||{}) }; delete nextUnlock[host];
+      const nextState={ ...state, blockedSites: nextBlocked, tempUnlock: nextUnlock };
+      await setState({ blockedSites: nextBlocked, tempUnlock: nextUnlock });
+      await scheduleNextAlarm(nextState);
+      sendResponse({ok:true,host}); return;
+    }
+
+    if(msg.action==="unlock"){
+      const host=normalizeHost(msg.site);
+      const minutes=Number(msg.minutes);
+      if(!host || !minutes){ sendResponse({ok:false,error:"bad_input"}); return; }
+      if(settings.parentMode===true){
+        const pw=String(msg.password||"").trim();
+        if(!hasPassword){ sendResponse({ok:false,error:"no_password_set"}); return; }
+        const ok=await verifyPassword(pw,state.passwordSalt,state.passwordHash);
+        if(!ok){ sendResponse({ok:false,error:"wrong_password"}); return; }
+      }
+      const expiry=Date.now() + minutes*60*1000;
+      const nextUnlock={ ...(state.tempUnlock||{}) }; nextUnlock[host]=expiry;
+      await setState({ tempUnlock: nextUnlock });
+      await scheduleNextAlarm({ ...state, tempUnlock: nextUnlock });
+      sendResponse({ok:true,host,expiry}); return;
+    }
+
+    sendResponse({ok:false,error:"unknown_action"});
   })();
-  return true; // async
+  return true;
+});
+
+// Ensure we enforce + schedule on install/start
+chrome.runtime.onInstalled.addListener(async ()=>{
+  await scheduleNextAlarm();
+  await scanAllTabsAndRedirect(); // << NEW: handle tabs already open at install
+});
+chrome.runtime.onStartup.addListener(async ()=>{
+  await scheduleNextAlarm();
+  await scanAllTabsAndRedirect(); // << NEW: handle tabs already open at browser start
 });

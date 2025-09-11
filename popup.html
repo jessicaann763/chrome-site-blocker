@@ -3,107 +3,169 @@
 <head>
   <meta charset="utf-8" />
   <title>Site Blocker</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     :root {
-      --bg:#0b0f14; --fg:#e5e7eb; --muted:#9ca3af; --border:#1f2937;
-      --primary:#10b981; --primary-fg:#06120e; --danger:#ef4444;
-      --shadow: 0 8px 24px rgba(0,0,0,.35);
+      --bg: #fff;
+      --fg: #111;
+      --muted: #6b7280;
+      --card: #fafafa;
+      --border: #e5e7eb;
+      --primary: #2563eb;
+      --primary-fg: #fff;
+      --danger: #dc2626;
+      --ring: #93c5fd;
+      --shadow: 0 6px 20px rgba(0,0,0,.08);
+      --radius: 14px;
     }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0b0f14;
+        --fg: #e5e7eb;
+        --muted: #9ca3af;
+        --card: #0f141b;
+        --border: #1f2937;
+        --primary: #60a5fa;
+        --primary-fg: #0b0f14;
+        --danger: #f87171;
+        --ring: #2563eb;
+        --shadow: 0 6px 20px rgba(0,0,0,.35);
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
     body {
-      margin: 0; padding: 14px 14px 10px; width: 360px;
-      background: linear-gradient(180deg, #0b0f14, #0f172a);
-      color: var(--fg); font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      color: var(--fg);
+      background: var(--bg);
+      width: 350px;
+      padding: 14px;
     }
-    h1 { font-size: 16px; margin: 0 0 8px; }
-    section { border:1px solid var(--border); border-radius: 14px; padding: 10px; margin-bottom: 10px; background: rgba(255,255,255,.03); }
-    label { font-size: 12px; color: var(--muted); display:block; margin-bottom: 6px; }
+    h3 { margin: 0 0 10px; font-size: 15px; }
+    .section {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px;
+      margin: 12px 0;
+      box-shadow: var(--shadow);
+    }
     input, select, button {
-      width: 100%; padding: 9px 10px; border-radius: 10px; border:1px solid var(--border); background: #0b1220; color: var(--fg);
+      width: 100%;
+      margin: 6px 0;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--fg);
+      transition: box-shadow .15s ease, transform .04s ease, background .15s;
     }
-    input::placeholder { color: #6b7280; }
-    .row { display:flex; gap:8px; }
+    input:focus, select:focus { outline: none; box-shadow: 0 0 0 3px var(--ring); }
+    button { background: var(--card); cursor: pointer; }
+    button:hover { filter: brightness(1.02); }
+    button:active { transform: translateY(1px); }
+    .btn-primary { background: var(--primary); color: var(--primary-fg); border-color: transparent; }
+    .btn-danger  { background: var(--danger);  color: #fff; border-color: transparent; }
+    .muted { color: var(--muted); font-size: 12px; }
+    .row { display: flex; gap: 8px; }
     .row > * { flex: 1; }
-    .muted { color: var(--muted); }
-    #blockedList { display:flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .pills { display: flex; flex-wrap: wrap; gap: 8px; }
     .pill {
-      display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border-radius:999px;
-      border:1px solid var(--border); background: #0b1220; font-size: 12px;
+      display: inline-flex; align-items: center; gap: 8px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      padding: 6px 10px;
+      border-radius: 999px;
     }
     .pill button {
-      width:auto; padding: 2px 6px; border-radius: 999px; border:1px solid var(--border); background:#111827; color:var(--fg);
-      cursor:pointer;
+      width: auto; padding: 0 6px; border: none; background: transparent; color: var(--muted);
     }
-    .count { font-variant-numeric: tabular-nums; opacity:.85; }
-    .rad { display:flex; align-items:center; gap:8px; margin-top:6px; }
-    .switch { width:auto; }
-    #toast { position: fixed; left:0; right:0; bottom:6px; display:grid; place-items:center; pointer-events:none; }
-    small { color: var(--muted); }
+    .pill button:hover { color: var(--danger); }
+
+    /* Toggle switch */
+    .toggle-wrap { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .switch { position: relative; display: inline-block; width: 44px; height: 24px; }
+    .switch input { display: none; }
+    .slider {
+      position: absolute; inset: 0; cursor: pointer;
+      background-color: #cbd5e1; border-radius: 999px; transition: .2s;
+    }
+    .slider:before {
+      position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px;
+      background-color: white; border-radius: 50%; transition: .2s;
+      box-shadow: 0 1px 2px rgba(0,0,0,.25);
+    }
+    input:checked + .slider { background-color: var(--primary); }
+    input:checked + .slider:before { transform: translateX(20px); }
+
+    .blurred { filter: blur(3px); pointer-events: none; }
+
+    #toast { position: fixed; inset-inline: 0; top: 8px; display:flex; justify-content:center; pointer-events:none; }
   </style>
 </head>
 <body>
-  <h1>Site Blocker</h1>
+  <div id="toast"></div>
 
-  <section>
-    <label for="siteInput">Block a site</label>
+  <div class="section">
+    <h3>Blocked Sites</h3>
+    <div id="blockedList" class="pills"></div>
+  </div>
+
+  <div class="section">
+    <h3>Add Site to Block</h3>
     <div class="row">
-      <input id="siteInput" placeholder="example.com" />
-      <button id="blockBtn">Block</button>
+      <input id="siteInput" placeholder="reddit.com" />
+      <button id="blockCurrentBtn" class="btn-primary" title="Block the active tab's site">Block current site</button>
     </div>
-    <div class="row" style="margin-top:6px">
-      <button id="blockCurrentBtn">Block Current Site</button>
-    </div>
+    <button id="blockBtn" class="btn-primary">Block</button>
     <small id="status" class="muted"></small>
-  </section>
+  </div>
 
-  <section>
-    <label>Blocked sites</label>
-    <div id="blockedList"></div>
-  </section>
-
-  <section>
-    <label>Temporary unblock</label>
+  <div class="section">
+    <h3>Temporary Unblock</h3>
+    <select id="unlockSiteSelect"></select>
     <div class="row">
-      <select id="unlockSiteSelect"></select>
       <select id="durationSelect">
         <option value="2">2 min</option>
-        <option value="5">5 min</option>
+        <option value="5" selected>5 min</option>
         <option value="10">10 min</option>
         <option value="15">15 min</option>
         <option value="30">30 min</option>
       </select>
+      <input id="password" type="password" placeholder="Password (master)" />
     </div>
-    <div class="row" style="margin-top:6px">
-      <input id="password" placeholder="Password (master)" />
-      <button id="unlockBtn">Unlock</button>
-    </div>
+    <button id="unlockBtn" class="btn-primary" disabled>Unlock</button>
     <small id="unlockStatus" class="muted"></small>
-  </section>
+  </div>
 
-  <section>
-    <label>Parent Mode</label>
-    <div class="rad">
-      <input type="checkbox" id="parentModeToggle" class="switch" />
-      <span id="parentModeState" class="muted">OFF</span>
+  <div class="section">
+    <h3>Password & Parent Mode</h3>
+    <div class="row">
+      <input id="newPassword" type="password" placeholder="Set / change master password" />
+      <button id="savePasswordBtn" class="btn-primary">Save password</button>
     </div>
-    <div class="row" style="margin-top:6px">
-      <input id="newPassword" placeholder="Set / change password" />
-      <button id="savePasswordBtn">Save Password</button>
-    </div>
-    <div id="disableParentWrap" style="display:none; margin-top:6px">
-      <div class="row">
-        <input id="disableParentPassword" placeholder="Password to disable" />
-        <button id="disableParentBtn">Disable Parent</button>
+
+    <div class="toggle-wrap">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <label class="switch">
+          <input type="checkbox" id="parentModeToggle" />
+          <span class="slider"></span>
+        </label>
+        <strong>Parent Mode</strong>
       </div>
+      <small id="parentModeState" class="muted"></small>
     </div>
-    <small id="settingsStatus" class="muted"></small>
-  </section>
 
-  <div id="toast"></div>
+    <div id="disableParentWrap" style="display:none;">
+      <input id="disableParentPassword" type="password" placeholder="Disable Parent Mode with master password" />
+      <button id="disableParentBtn" class="btn-danger">Disable Parent Mode</button>
+    </div>
+
+    <small id="settingsStatus" class="muted"></small>
+  </div>
+
   <script src="popup.js"></script>
 </body>
 </html>
-
 
 
 

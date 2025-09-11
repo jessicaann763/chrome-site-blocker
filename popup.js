@@ -5,7 +5,7 @@ const setIf = (id, fn) => { const el = $(id); if (el) fn(el); };
 let gHasPassword = false;
 let gParentMode  = false;
 let gTempUnlock  = {};   // { host: expiryMs }
-let gCountdownTicker = null;
+let unlockTimer;
 
 function toast(msg, ok = true) {
   const host = $("toast");
@@ -43,42 +43,91 @@ function currentTabHostname(cb) {
     } catch { cb(""); }
   });
 }
-
-// ---------- countdowns (multi per-site) ----------
-function formatMMSS(ms) {
-  if (ms <= 0) return "00:00";
-  const mm = Math.floor(ms / 60000);
-  const ss = Math.floor((ms % 60000) / 1000);
-  return `${String(mm).padStart(2,"0")}:${String(ss).padStart(2,"0")}`;
-}
-function startGlobalCountdownTicker() {
-  if (gCountdownTicker) clearInterval(gCountdownTicker);
-  gCountdownTicker = setInterval(() => {
-    const now = Date.now();
-    document.querySelectorAll(".pill[data-host]").forEach(pill => {
-      const host = pill.getAttribute("data-host");
-      const expiry = Number(pill.getAttribute("data-expiry") || 0);
-      const badge = pill.querySelector(".count");
-      if (!badge) return;
-
-      const remaining = expiry - now;
-      if (remaining > 0) {
-        badge.textContent = formatMMSS(remaining);
-      } else {
-        badge.textContent = "";
-        pill.removeAttribute("data-expiry");
+function blockCurrentTabIfMatches(host) {
+  currentTab((tab) => {
+    if (!tab?.url) return;
+    try {
+      const u = new URL(tab.url);
+      if (u.protocol !== "http:" && u.protocol !== "https:") return;
+      let h = u.hostname.toLowerCase();
+      if (h.startsWith("www.")) h = h.slice(4);
+      if (h === host || h.endsWith("." + host)) {
+        const blockedUrl = chrome.runtime.getURL(
+          `blocked.html?site=${encodeURIComponent(host)}&url=${encodeURIComponent(tab.url)}`
+        );
+        chrome.tabs.update(tab.id, { url: blockedUrl });
       }
-    });
-  }, 1000);
+    } catch {}
+  });
 }
+function refreshIfCurrentTabMatches(host) {
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    const tab = tabs?.[0]; if (!tab?.url) return;
+    try {
+      const current = new URL(tab.url);
+      const blockedBase = chrome.runtime.getURL("blocked.html");
+      const isBlockedPage = tab.url.startsWith(blockedBase);
+      if (isBlockedPage) {
+        const qs = new URLSearchParams(current.search);
+        const targetUrl = qs.get("url");
+        const siteParam = (qs.get("site") || "").toLowerCase();
+        if (targetUrl) {
+          try {
+            const t = new URL(targetUrl);
+            let tHost = t.hostname.toLowerCase();
+            if (tHost.startsWith("www.")) tHost = tHost.slice(4);
+            const sameHost = (tHost === host) || tHost.endsWith("." + host);
+            const matchesSiteParam = !siteParam || tHost === siteParam || tHost.endsWith("." + siteParam);
+            if (sameHost && matchesSiteParam) { chrome.tabs.update(tab.id, { url: targetUrl }); return; }
+          } catch {}
+        }
+        chrome.tabs.update(tab.id, { url: `https://${host}/` });
+        return;
+      }
+      let h = current.hostname.toLowerCase();
+      if (h.startsWith("www.")) h = h.slice(4);
+      if (h === host || h.endsWith("." + host)) chrome.tabs.reload(tab.id);
+    } catch {}
+  });
+}
+
+// ------- countdown helpers -------
 function showUnlockCountdown(host, expiryMs) {
+  clearInterval(unlockTimer);
   const el = $("unlockStatus");
   if (!el) return;
-  const ms = expiryMs - Date.now();
-  el.textContent = ms > 0 ? `Unlocked ${host} — ${formatMMSS(ms)} remaining` : "";
+  function tick() {
+    const ms = expiryMs - Date.now();
+    if (ms <= 0) {
+      el.textContent = "Lock restored.";
+      clearInterval(unlockTimer);
+      return;
+    }
+    const mm = Math.floor(ms / 60000);
+    const ss = Math.floor((ms % 60000) / 1000);
+    el.textContent = `Unlocked ${host} — ${mm}:${String(ss).padStart(2, "0")} remaining`;
+  }
+  tick();
+  unlockTimer = setInterval(tick, 1000);
+}
+function updateCountdownFromState() {
+  const now = Date.now();
+  currentTabHostname((h) => {
+    let pick = null;
+    if (h) {
+      for (const [host, t] of Object.entries(gTempUnlock || {})) {
+        if (t > now && (h === host || h.endsWith("." + host))) { pick = [host, t]; break; }
+      }
+    }
+    if (!pick) {
+      const entries = Object.entries(gTempUnlock || {}).filter(([, t]) => t > now);
+      if (entries.length) entries.sort((a, b) => a[1] - b[1]), pick = entries[0];
+    }
+    if (pick) showUnlockCountdown(pick[0], pick[1]); else setText("unlockStatus", "");
+  });
 }
 
-// ---------- UI renderers ----------
+// ------- UI renderers -------
 function renderBlocked(list) {
   setIf("blockedList", (wrap) => {
     wrap.innerHTML = "";
@@ -86,28 +135,11 @@ function renderBlocked(list) {
       wrap.innerHTML = "<small class='muted'>No blocked sites yet.</small>";
       return;
     }
-    const now = Date.now();
     const sorted = [...list].sort((a,b) => a.localeCompare(b));
     sorted.forEach((host) => {
       const pill = document.createElement("span");
       pill.className = "pill";
-      pill.setAttribute("data-host", host);
-
-      const label = document.createElement("span");
-      label.textContent = host;
-
-      const badge = document.createElement("span");
-      badge.className = "count";
-      badge.style.cssText = "margin-left:6px;";
-
-      const expiry = Number((gTempUnlock||{})[host] || 0);
-      if (expiry > now) {
-        pill.setAttribute("data-expiry", String(expiry));
-        badge.textContent = formatMMSS(expiry - now);
-      } else {
-        badge.textContent = "";
-      }
-
+      pill.textContent = host + " ";
       const btn = document.createElement("button");
       btn.textContent = "✕";
       btn.title = gParentMode ? "Unblock disabled in Parent Mode" : "Unblock";
@@ -120,19 +152,16 @@ function renderBlocked(list) {
             if (res?.ok) {
               toast(`Unblocked ${host}`);
               loadState();
+              refreshIfCurrentTabMatches(host);
             } else {
               toast("Disable Parent Mode to unblock", false);
             }
           });
         });
       }
-
-      pill.appendChild(label);
-      pill.appendChild(badge);
       pill.appendChild(btn);
       wrap.appendChild(pill);
     });
-    startGlobalCountdownTicker();
   });
 }
 
@@ -153,6 +182,7 @@ function renderUnlockSelect(list) {
   }
   select.disabled = false;
 
+  // CHANGED: exact phrasing you wanted
   const ph = document.createElement("option");
   ph.value = "";
   ph.textContent = "Select Site";
@@ -207,15 +237,13 @@ function loadState() {
     renderBlocked(blocked);
     renderUnlockSelect(blocked);
     applyParentModeUI(parentMode);
-
-    // show status for currently selected site if any
-    const host = $("unlockSiteSelect")?.value;
-    if (host && gTempUnlock[host] > Date.now()) showUnlockCountdown(host, gTempUnlock[host]);
+    updateCountdownFromState();
   });
 }
 
-// ---------- events ----------
+// ------- events -------
 document.addEventListener("DOMContentLoaded", () => {
+  // NEW: Pressing Enter inside the site field acts like clicking "Block"
   const triggerBlock = () => {
     const site = $("siteInput")?.value.trim();
     if (!site) return setText("status", "Enter a site to block.", false);
@@ -224,18 +252,9 @@ document.addEventListener("DOMContentLoaded", () => {
         toast(`Blocked ${res.host}`);
         $("siteInput").value = "";
         loadState();
-        // If current tab matches, background will redirect on navigation; we can optionally refresh:
-        currentTabHostname((h) => {
-          if (!h) return;
-          if (h === res.host || h.endsWith("." + res.host)) {
-            // poke navigation by reloading; background intercepts
-            chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-              if (tabs[0]?.id) chrome.tabs.reload(tabs[0].id);
-            });
-          }
-        });
+        blockCurrentTabIfMatches(res.host);
       } else {
-        setText("status", "Invalid site.", false);
+        setText("status", "Invalid site (cannot block Chrome internal pages).", false);
       }
     });
   };
@@ -248,7 +267,10 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
   });
-  setIf("blockBtn", (btn) => btn.addEventListener("click", triggerBlock));
+
+  setIf("blockBtn", (btn) => {
+    btn.addEventListener("click", triggerBlock);
+  });
 
   setIf("blockCurrentBtn", (btn) => {
     btn.addEventListener("click", () => {
@@ -258,11 +280,9 @@ document.addEventListener("DOMContentLoaded", () => {
           if (res?.ok) {
             toast(`Blocked ${res.host}`);
             loadState();
-            chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-              if (tabs[0]?.id) chrome.tabs.reload(tabs[0].id);
-            });
+            blockCurrentTabIfMatches(res.host);
           } else {
-            setText("status", "Invalid site.", false);
+            setText("status", "Invalid site (cannot block Chrome internal pages).", false);
           }
         });
       });
@@ -280,6 +300,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (res?.ok) {
           toast(`Unlocked ${res.host} for ${minutes}m`);
           if (res.expiry) showUnlockCountdown(res.host, res.expiry);
+          refreshIfCurrentTabMatches(res.host);
           if (gParentMode) { const f = $("password"); if (f) f.value = ""; }
           loadState();
         } else if (res?.error === "wrong_password") {
@@ -324,7 +345,55 @@ document.addEventListener("DOMContentLoaded", () => {
     tgl.addEventListener("change", (e) => {
       const wantEnable = e.target.checked;
       if (wantEnable && !gHasPassword) {
+        setText("settingsStatus", "Set a master password before enabling Parent Mode.", false);
+        e.target.checked = false; applyParentModeUI(false); $("newPassword")?.focus(); return;
+      }
+      const disablePw = ($("disableParentPassword")?.value || "").trim();
+      chrome.runtime.sendMessage(
+        { action: "toggleParentMode", enableParentMode: wantEnable, password: wantEnable ? "" : disablePw },
+        (res) => {
+          if (res?.ok) {
+            toast(wantEnable ? "Parent Mode enabled" : "Parent Mode disabled");
+            applyParentModeUI(res.settings.parentMode);
+            if (!wantEnable) { const dp = $("disableParentPassword"); if (dp) dp.value = ""; }
+          } else if (res?.error === "wrong_password") {
+            e.target.checked = true; applyParentModeUI(true);
+            setText("settingsStatus", "Wrong password to disable Parent Mode.", false);
+          } else if (res?.error === "no_password_set") {
+            e.target.checked = false; applyParentModeUI(false);
+            setText("settingsStatus", "Set a master password before enabling Parent Mode.", false);
+          } else {
+            e.target.checked = !wantEnable; applyParentModeUI(!wantEnable);
+            setText("settingsStatus", "Could not update Parent Mode.", false);
+          }
+        }
+      );
+    });
+  });
 
+  setIf("disableParentBtn", (btn) => {
+    btn.addEventListener("click", () => {
+      const pw = ($("disableParentPassword")?.value || "").trim();
+      chrome.runtime.sendMessage(
+        { action: "toggleParentMode", enableParentMode: false, password: pw },
+        (res) => {
+          if (res?.ok) {
+            toast("Parent Mode disabled");
+            applyParentModeUI(false);
+            const tgl = $("parentModeToggle"); if (tgl) tgl.checked = false;
+            const dp = $("disableParentPassword"); if (dp) dp.value = "";
+          } else if (res?.error === "wrong_password") {
+            setText("settingsStatus", "Wrong password to disable Parent Mode.", false);
+          } else {
+            setText("settingsStatus", "Could not disable Parent Mode.", false);
+          }
+        }
+      );
+    });
+  });
+
+  loadState();
+});
 
 
 
