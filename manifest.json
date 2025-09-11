@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Site Blocker",
-  "version": "1.2.1",
-  "description": "Block distracting sites. Temporary unblocks. Parent Mode with password. Privacy-first and fully offline.",
+  "name": "Site Blocker (Cute)",
+  "version": "1.4.0",
+  "description": "Block distracting sites with a cute nudge and per-site temporary unblocks.",
   "action": {
     "default_title": "Site Blocker",
     "default_popup": "popup.html"
@@ -13,28 +13,29 @@
   },
   "icons": {
     "16": "icon16.png",
-    "48": "icon48.png",
+    "32": "icon32.png",
     "128": "icon128.png"
   },
   "permissions": [
     "storage",
     "tabs",
-    "webNavigation",
-    "alarms"
+    "alarms",
+    "activeTab",
+    "webNavigation"
   ],
   "host_permissions": [
-    "<all_urls>"
+    "http://*/*",
+    "https://*/*"
   ],
   "web_accessible_resources": [
     {
       "resources": ["blocked.html", "blocked.js"],
-      "matches": ["<all_urls>"]
+      "matches": ["*://*/*"]
     }
   ],
-  "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'"
-  }
+  "minimum_chrome_version": "114"
 }
+
 
 
 

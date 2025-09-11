@@ -6,15 +6,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     :root {
-      --fg:#111; --muted:#6b7280; --border:#e5e7eb; --card:#ffffffcc; --accent:#8b5cf6;
-      --accent-strong:#6d28d9; --btn:#ffffff; --btn-fg:#111;
-      --radius:18px;
+      --fg:#111; --muted:#6b7280; --border:#e5e7eb; --card:#ffffffcc; --accent:#6d28d9;
+      --btn:#ffffff; --btn-fg:#111; --radius:18px;
     }
     @media (prefers-color-scheme: dark) {
-      :root {
-        --fg:#e5e7eb; --muted:#9ca3af; --border:#1f2937; --card:#0f141bcc; --accent:#a78bfa; --accent-strong:#8b5cf6;
-        --btn:#111827; --btn-fg:#e5e7eb;
-      }
+      :root { --fg:#e5e7eb; --muted:#9ca3af; --border:#1f2937; --card:#0f141bcc; --accent:#8b5cf6; --btn:#111827; --btn-fg:#e5e7eb; }
       body { background:#0b0f14; }
     }
     * { box-sizing: border-box; }
@@ -57,11 +53,8 @@
     }
     button:hover { filter: brightness(1.03); }
     button:active { transform: translateY(1px); }
-    .btn-outline {
-      border-color: var(--accent-strong);
-      box-shadow: inset 0 0 0 1px var(--accent-strong);
-    }
-    .btn-primary { background: var(--accent-strong); color: white; border-color: var(--accent-strong); }
+    .btn-outline { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+    .btn-primary { background: var(--accent); color: white; border-color: var(--accent); }
     small { display:block; margin-top: 8px; color: var(--muted); }
 
     .confetti {
@@ -95,7 +88,6 @@
   <script src="blocked.js"></script>
 </body>
 </html>
-
 
 
 
